@@ -5,7 +5,7 @@
 Mobile app for members of The Church of Jesus Christ of Latter-day Saints to discover and organize wholesome, faith-aligned activities nearby.
 
 ## Design Document
-Full design at: `/Users/jamesdivis/the-gathering-design-doc.md`
+See `the-gathering-design-doc.md` in this repo for the full design, PR roadmap (12 phases), architecture, and personas.
 
 ## Tech Stack (per design)
 - **Mobile**: Flutter (preferred)
