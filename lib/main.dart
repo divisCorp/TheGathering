@@ -23,11 +23,14 @@ void main() async {
                          const String.fromEnvironment('SUPABASE_ANON_KEY');
 
   if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
-    await dotenv.load(fileName: '.env');
-    supabaseUrl = dotenv.env['SUPABASE_URL'] ?? const String.fromEnvironment('SUPABASE_URL', defaultValue: 'YOUR_SUPABASE_URL');
-    supabaseAnonKey = dotenv.env['SUPABASE_PUBLISHABLE_KEY'] ??
-                      dotenv.env['SUPABASE_ANON_KEY'] ??
-                      const String.fromEnvironment('SUPABASE_ANON_KEY', defaultValue: 'YOUR_SUPABASE_ANON_KEY');
+    // Only load .env in debug mode or when not using dart-define (local dev)
+    if (!const bool.fromEnvironment('dart.vm.product')) {
+      await dotenv.load(fileName: '.env');
+      supabaseUrl = dotenv.env['SUPABASE_URL'] ?? const String.fromEnvironment('SUPABASE_URL', defaultValue: 'YOUR_SUPABASE_URL');
+      supabaseAnonKey = dotenv.env['SUPABASE_PUBLISHABLE_KEY'] ??
+                        dotenv.env['SUPABASE_ANON_KEY'] ??
+                        const String.fromEnvironment('SUPABASE_ANON_KEY', defaultValue: 'YOUR_SUPABASE_ANON_KEY');
+    }
   }
 
   // Initialize Supabase
