@@ -7,7 +7,9 @@ create or replace function public.nearby_events(
   radius_miles double precision default 15,
   search text default null,
   lim integer default 20,
-  off integer default 0
+  off integer default 0,
+  start_date timestamptz default null,
+  end_date timestamptz default null
 )
 returns setof public.events
 language sql
@@ -22,6 +24,8 @@ as $$
       st_setsrid(st_makepoint(lon, lat), 4326)::geography,
       radius_miles * 1609.34  -- convert miles to meters
     )
+    and (start_date is null or start_time >= start_date)
+    and (end_date is null or start_time <= end_date)
   order by start_time asc
   limit lim
   offset off;
@@ -29,3 +33,4 @@ $$;
 
 -- Grant execute to authenticated (and anon if needed)
 grant execute on function public.nearby_events(double precision, double precision, double precision, text, integer, integer) to authenticated, anon;
+grant execute on function public.nearby_events(double precision, double precision, double precision, text, integer, integer, timestamptz, timestamptz) to authenticated, anon;

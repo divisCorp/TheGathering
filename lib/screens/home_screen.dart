@@ -37,6 +37,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   double _currentLon = -111.89;
   bool _locationLoaded = false;
   double _radiusMiles = 15.0;
+  String _dateFilter = 'this_week';
   late final MapController _mapController = MapController();
 
   @override
@@ -102,6 +103,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         limit: _pageSize,
         offset: _currentOffset,
         search: _searchQuery.isNotEmpty ? _searchQuery : null,
+        startDate: _getStartDate(),
+        endDate: _getEndDate(),
       );
 
       if (!mounted) return;
@@ -144,6 +147,58 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return '${miles.toStringAsFixed(1)} mi';
   }
 
+  DateTime? _getStartDate() {
+    final now = DateTime.now();
+    switch (_dateFilter) {
+      case 'this_week':
+        // Start of this week (Monday), but not before today
+        final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+        return now.isAfter(startOfWeek) ? now : startOfWeek;
+      case 'this_month':
+        final startOfMonth = DateTime(now.year, now.month, 1);
+        return now.isAfter(startOfMonth) ? now : startOfMonth;
+      case 'next_3_months':
+        return now;
+      case 'all_future':
+        return now;
+      default:
+        return now;
+    }
+  }
+
+  DateTime? _getEndDate() {
+    final now = DateTime.now();
+    switch (_dateFilter) {
+      case 'this_week':
+        // End of this week (Sunday)
+        final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+        return startOfWeek.add(const Duration(days: 6, hours: 23, minutes: 59, seconds: 59));
+      case 'this_month':
+        return DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+      case 'next_3_months':
+        return DateTime(now.year, now.month + 3, now.day, 23, 59, 59);
+      case 'all_future':
+        return null;
+      default:
+        return null;
+    }
+  }
+
+  String _getFilterLabel() {
+    switch (_dateFilter) {
+      case 'this_week':
+        return 'This week';
+      case 'this_month':
+        return 'This month';
+      case 'next_3_months':
+        return 'Next 3 months';
+      case 'all_future':
+        return 'All upcoming';
+      default:
+        return 'Upcoming';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -168,7 +223,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Near you (${_radiusMiles.toStringAsFixed(0)} mi)',
+              'Near you (${_radiusMiles.toStringAsFixed(0)} mi) — ${_getFilterLabel()}',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
@@ -219,6 +274,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 Text('${_radiusMiles.toStringAsFixed(0)} mi'),
               ],
             ),
+
+            // Date range filter (future activities)
+            DropdownButtonFormField<String>(
+              initialValue: _dateFilter,
+              decoration: const InputDecoration(
+                labelText: 'Timeframe',
+                border: OutlineInputBorder(),
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'this_week', child: Text('This week')),
+                DropdownMenuItem(value: 'this_month', child: Text('This month')),
+                DropdownMenuItem(value: 'next_3_months', child: Text('Next 3 months')),
+                DropdownMenuItem(value: 'all_future', child: Text('All upcoming')),
+              ],
+              onChanged: (v) {
+                if (v != null && v != _dateFilter) {
+                  setState(() => _dateFilter = v);
+                  _loadEvents(reset: true);
+                }
+              },
+            ),
+            const SizedBox(height: 8),
 
             // Basic filter chips (PR4 direction)
             SingleChildScrollView(

@@ -71,6 +71,8 @@ class EventsService {
     int limit = 20,
     int offset = 0,
     String? search,
+    DateTime? startDate,
+    DateTime? endDate,
   }) async {
     try {
       final response = await _client.rpc('nearby_events', params: {
@@ -80,6 +82,8 @@ class EventsService {
         'search': search,
         'lim': limit,
         'off': offset,
+        'start_date': startDate?.toIso8601String(),
+        'end_date': endDate?.toIso8601String(),
       });
 
       return (response as List<dynamic>)
@@ -94,6 +98,13 @@ class EventsService {
 
       if (search != null && search.trim().isNotEmpty) {
         query = query.ilike('title', '%${search.trim()}%');
+      }
+
+      if (startDate != null) {
+        query = query.gte('start_time', startDate.toIso8601String());
+      }
+      if (endDate != null) {
+        query = query.lte('start_time', endDate.toIso8601String());
       }
 
       final response = await query
