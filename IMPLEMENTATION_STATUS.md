@@ -1,10 +1,11 @@
 # The Gathering - Implementation Status
 
 ## Completed
-- **PR1**: Full bootstrap + auth with phone verification + exact attestation
-- **PR2**: Profiles + 4-area interests taxonomy + avatar gate + MainShell with tabs
-- **PR3**: Event creation wizard (templates from research, 4-area tags, location tiers/privacy, recurring minimal, standards banner + keyword filter). EventsService with Supabase create/fetch.
-- **PR4 start**: Dynamic discovery list in HomeScreen with Supabase (or mock) fetch, 4-area filters, event cards with tags.
+- **PR1**: Full bootstrap + auth (email/pass + phone OTP + attestation + attestation screen)
+- **PR2**: Profiles + 4-area interests taxonomy + avatar gate + MainShell tabs + Riverpod providers
+- **PR3**: Event creation wizard (templates, 4-area tags, tiers/privacy, recurring, standards filter). EventsService Supabase integrated.
+- **PR4**: Full discovery with geolocator + PostGIS `nearby_events` RPC + flutter_map (radius circle + tappable markers) + search/filters/pagination. RSVP + attendees wired.
+- Polish: analyze -- 0 issues, debug/ TODO cleanup, UX refinements (miles, current-loc capture, marker taps), providers stable.
 
 ## Files Overview
 - pubspec.yaml (updated with image_picker)

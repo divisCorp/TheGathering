@@ -30,6 +30,13 @@ dependencies:
   url_launcher: ^6.2.5  # For terms/privacy links
   image_picker: ^1.1.2  # For avatar upload (PR2)
   flutter_dotenv: ^5.1.0  # For easy Supabase keys in .env
+  geolocator: ^14.0.2
+  flutter_map: ^8.3.1
+  latlong2: ^0.10.1
+
+
+  # Crash reporting (production) - temporarily disabled due to build compatibility in this env
+  # sentry_flutter: ^7.18.0
 
 dev_dependencies:
   flutter_test:

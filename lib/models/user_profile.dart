@@ -34,7 +34,7 @@ class UserProfile {
 
   factory UserProfile.fromSupabase(Map<String, dynamic> data) {
     return UserProfile(
-      id: data['id'] as String,
+      id: data['id']?.toString() ?? '',
       email: data['email'] as String?,
       phone: data['phone'] as String?,
       displayName: data['display_name'] as String? ?? 'Member',
@@ -46,14 +46,14 @@ class UserProfile {
       stake: data['stake'] as String?,
       isVerifiedMember: data['is_verified_member'] as bool? ?? false,
       avatarUrl: data['avatar_url'] as String?,
-      createdAt: DateTime.parse(data['created_at'] as String),
+      createdAt: data['created_at'] != null 
+          ? DateTime.parse(data['created_at'] as String) 
+          : DateTime.now(),
     );
   }
 
   Map<String, dynamic> toJson() => {
     'id': id,
-    'email': email,
-    'phone': phone,
     'display_name': displayName,
     'age_range': ageRange,
     'bio': bio,
@@ -65,4 +65,7 @@ class UserProfile {
     'avatar_url': avatarUrl,
     'created_at': createdAt.toIso8601String(),
   };
+
+  /// Map suitable for Supabase upsert (only DB columns)
+  Map<String, dynamic> toSupabase() => toJson();
 }

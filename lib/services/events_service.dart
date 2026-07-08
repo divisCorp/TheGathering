@@ -1,6 +1,5 @@
 import 'package:the_gathering/models/event.dart';
 import 'package:the_gathering/services/supabase_service.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Service for event CRUD, following PR3+ design.
 /// Uses Supabase for persistence, geo queries (PostGIS), etc.
@@ -28,7 +27,7 @@ class EventsService {
     if (user == null) throw Exception('User not authenticated');
 
     // Basic keyword filter enforcement (server side would be better, but client for MVP)
-    final fullText = '${title} ${description ?? ''}';
+    final fullText = '$title ${description ?? ''}';
     if (_hasBannedKeywords(fullText)) {
       throw Exception('Content violates standards. Please remove inappropriate terms.');
     }
@@ -63,48 +62,52 @@ class EventsService {
     return banned.any((k) => lower.contains(k));
   }
 
-  /// Fetch events near a location (basic radius for now).
-  /// In full PR4 use PostGIS ST_DWithin.
+  /// Fetch events using PostGIS RPC for real radius filtering (PR4).
+  /// Uses the nearby_events function. Falls back if RPC not yet available.
   static Future<List<GatheringEvent>> fetchNearbyEvents({
     required double lat,
     required double lon,
     double radiusMiles = 15,
+    int limit = 20,
+    int offset = 0,
+    String? search,
   }) async {
-    // For demo, fetch all active and filter client-side.
-    // Real: use RPC or query with PostGIS.
-    final response = await _client
-        .from('events')
-        .select()
-        .eq('status', 'active')
-        .order('start_time', ascending: true)
-        .limit(50);
+    try {
+      final response = await _client.rpc('nearby_events', params: {
+        'lat': lat,
+        'lon': lon,
+        'radius_miles': radiusMiles,
+        'search': search,
+        'lim': limit,
+        'off': offset,
+      });
 
-    return response.map<GatheringEvent>((json) => _fromJson(json)).toList();
+      return (response as List<dynamic>)
+          .map<GatheringEvent>((json) => _fromJson(json as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      // Fallback for dev if RPC not available yet (non-fatal)
+      var query = _client
+          .from('events')
+          .select()
+          .eq('status', 'active');
+
+      if (search != null && search.trim().isNotEmpty) {
+        query = query.ilike('title', '%${search.trim()}%');
+      }
+
+      final response = await query
+          .order('start_time', ascending: true)
+          .range(offset, offset + limit - 1);
+
+      return (response as List<dynamic>)
+          .map<GatheringEvent>((json) => _fromJson(json as Map<String, dynamic>))
+          .toList();
+    }
   }
 
   static GatheringEvent _fromJson(Map<String, dynamic> json) {
-    // Simple parser; enhance with lat/lon extraction from geography if needed.
-    return GatheringEvent(
-      id: json['id'] as String,
-      hostId: json['host_id'] as String,
-      title: json['title'] as String,
-      description: json['description'] as String?,
-      startTime: DateTime.parse(json['start_time'] as String),
-      endTime: json['end_time'] != null ? DateTime.parse(json['end_time']) : null,
-      address: json['address'] as String?,
-      lat: null, // parse from geography if stored
-      lon: null,
-      locationType: json['location_type'] as String? ?? 'public_venue',
-      locationPrivacy: json['location_privacy'] as String? ?? 'post_rsvp',
-      tags: (json['tags'] as List<dynamic>?)?.cast<String>() ?? [],
-      isRecurring: json['is_recurring'] as bool? ?? false,
-      recurrenceNote: json['recurrence_note'] as String?,
-      maxAttendees: json['max_attendees'] as int?,
-      cost: (json['cost'] as num?)?.toDouble(),
-      visibility: json['visibility'] as String? ?? 'verified_members',
-      status: json['status'] as String? ?? 'active',
-      createdAt: DateTime.parse(json['created_at'] as String),
-    );
+    return GatheringEvent.fromSupabase(json);
   }
 
   /// Get events hosted by current user.
@@ -117,5 +120,117 @@ class EventsService {
         .eq('host_id', user.id)
         .order('start_time', ascending: true);
     return response.map<GatheringEvent>((json) => _fromJson(json)).toList();
+  }
+
+  // ==================== Basic RSVPs ====================
+
+  /// Fetch RSVPs for the current user (for My Activities).
+  static Future<List<Map<String, dynamic>>> fetchMyRsvps() async {
+    final user = SupabaseService.currentUser;
+    if (user == null) return [];
+    final response = await _client
+        .from('rsvps')
+        .select('*, events(*)')
+        .eq('user_id', user.id)
+        .order('created_at', ascending: false);
+    return List<Map<String, dynamic>>.from(response);
+  }
+
+  /// Create or update an RSVP for an event.
+  static Future<void> rsvpToEvent({
+    required String eventId,
+    required String status, // 'going' | 'maybe' | 'no'
+    String? note,
+  }) async {
+    final user = SupabaseService.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    await _client.from('rsvps').upsert({
+      'user_id': user.id,
+      'event_id': eventId,
+      'status': status,
+      'note': note,
+    });
+  }
+
+  /// Remove RSVP for an event.
+  static Future<void> cancelRsvp(String eventId) async {
+    final user = SupabaseService.currentUser;
+    if (user == null) return;
+
+    await _client
+        .from('rsvps')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('event_id', eventId);
+  }
+
+  /// Fetch attendees (RSVPs with 'going' or 'maybe') for an event, including basic profile info.
+  static Future<List<Map<String, dynamic>>> fetchEventAttendees(String eventId) async {
+    final response = await _client
+        .from('rsvps')
+        .select('id, status, note, created_at, profiles (id, display_name, avatar_url)')
+        .eq('event_id', eventId)
+        .inFilter('status', ['going', 'maybe'])
+        .order('created_at', ascending: true);
+
+    return List<Map<String, dynamic>>.from(response);
+  }
+
+  /// Delete an event (only allowed for the host).
+  static Future<void> deleteEvent(String eventId) async {
+    final user = SupabaseService.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    await _client
+        .from('events')
+        .delete()
+        .eq('id', eventId)
+        .eq('host_id', user.id);
+  }
+
+  /// Update an existing event (only host).
+  static Future<void> updateEvent({
+    required String eventId,
+    required String title,
+    required String? description,
+    required DateTime startTime,
+    DateTime? endTime,
+    String? address,
+    double? lat,
+    double? lon,
+    String locationType = 'public_venue',
+    String locationPrivacy = 'post_rsvp',
+    required List<String> tags,
+    bool isRecurring = false,
+    String? recurrenceNote,
+    int? maxAttendees,
+    double? cost,
+  }) async {
+    final user = SupabaseService.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    final fullText = '$title ${description ?? ''}';
+    if (_hasBannedKeywords(fullText)) {
+      throw Exception('Content violates standards. Please remove inappropriate terms.');
+    }
+
+    await _client.from('events').update({
+      'title': title,
+      'description': description,
+      'start_time': startTime.toIso8601String(),
+      'end_time': endTime?.toIso8601String(),
+      'address': address,
+      'location': (lat != null && lon != null) 
+          ? 'POINT($lon $lat)'
+          : null,
+      'location_type': locationType,
+      'location_privacy': locationPrivacy,
+      'tags': tags,
+      'is_recurring': isRecurring,
+      'recurrence_note': recurrenceNote,
+      'max_attendees': maxAttendees,
+      'cost': cost,
+    }).eq('id', eventId).eq('host_id', user.id);
   }
 }

@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
+import 'package:the_gathering/models/event.dart';
 import 'package:the_gathering/services/events_service.dart';
 import 'package:the_gathering/services/interests_service.dart';
 
-/// Event Creation Wizard (PR3 start).
-/// Supports:
-/// - Templates from real ward activities (FHE-style, hike, service, scripture, potluck, sports)
-/// - 4-area + Fellowship/Service tag picker
-/// - Date/time
-/// - Location with privacy tiers
-/// - Minimal recurring support
-/// - Standards banner + basic keyword filter (alcohol, etc.)
+/// Event Creation Wizard.
+/// Supports templates, tags, tiers, standards, recurring notes, location (now with current GPS capture).
 class CreateEventScreen extends StatefulWidget {
-  const CreateEventScreen({super.key});
+  final GatheringEvent? event; // if provided, we are editing
+
+  const CreateEventScreen({super.key, this.event});
 
   @override
   State<CreateEventScreen> createState() => _CreateEventScreenState();
@@ -31,6 +31,39 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   String _locationPrivacy = 'post_rsvp';
   bool _isRecurring = false;
   int? _maxAttendees;
+
+  double? _eventLat;
+  double? _eventLon;
+
+  bool _isPublishing = false;
+  bool _justPublished = false;
+  String? _lastPublishedTitle;
+
+  bool get _isEditing => widget.event != null;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isEditing) {
+      final e = widget.event!;
+      _titleController.text = e.title;
+      _descController.text = e.description ?? '';
+      _startTime = e.startTime;
+      _addressController.text = e.address ?? '';
+      _eventLat = e.lat;
+      _eventLon = e.lon;
+      _locationType = e.locationType;
+      _locationPrivacy = e.locationPrivacy;
+      _isRecurring = e.isRecurring;
+      _recurrenceController.text = e.recurrenceNote ?? '';
+      _maxAttendees = e.maxAttendees;
+      _selectedTags = List.from(e.tags);
+      // try to match a template if possible (basic)
+      if (_templates.contains(e.title)) {
+        _selectedTemplate = e.title;
+      }
+    }
+  }
 
   final List<String> _templates = [
     'Custom',
@@ -105,8 +138,33 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     });
   }
 
+  Future<void> _useCurrentLocation() async {
+    try {
+      final permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        await Geolocator.requestPermission();
+      }
+      final pos = await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium));
+      if (mounted) {
+        setState(() {
+          _eventLat = pos.latitude;
+          _eventLon = pos.longitude;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Using current location for event')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not get location: $e')),
+        );
+      }
+    }
+  }
+
   void _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate() || _isPublishing) return;
 
     final fullText = '${_titleController.text} ${_descController.text}';
     if (_hasStandardsViolation(fullText)) {
@@ -116,44 +174,99 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       return;
     }
 
-    setState(() {}); // Could add loading state
+    setState(() => _isPublishing = true);
 
     try {
-      await EventsService.createEvent(
-        title: _titleController.text.trim(),
-        description: _descController.text.trim().isEmpty ? null : _descController.text.trim(),
-        startTime: _startTime,
-        address: _addressController.text.trim().isEmpty ? null : _addressController.text.trim(),
-        // TODO(PR4): Add real lat/lon from map picker or geocoding
-        lat: null,
-        lon: null,
-        locationType: _locationType,
-        locationPrivacy: _locationPrivacy,
-        tags: _selectedTags,
-        isRecurring: _isRecurring,
-        recurrenceNote: _isRecurring ? _recurrenceController.text.trim() : null,
-        maxAttendees: _maxAttendees,
-      );
+      final title = _titleController.text.trim();
+      final description = _descController.text.trim().isEmpty ? null : _descController.text.trim();
+
+      if (_isEditing) {
+        await EventsService.updateEvent(
+          eventId: widget.event!.id,
+          title: title,
+          description: description,
+          startTime: _startTime,
+          address: _addressController.text.trim().isEmpty ? null : _addressController.text.trim(),
+          lat: _eventLat,
+          lon: _eventLon,
+          locationType: _locationType,
+          locationPrivacy: _locationPrivacy,
+          tags: _selectedTags,
+          isRecurring: _isRecurring,
+          recurrenceNote: _isRecurring ? _recurrenceController.text.trim() : null,
+          maxAttendees: _maxAttendees,
+        );
+      } else {
+        await EventsService.createEvent(
+          title: title,
+          description: description,
+          startTime: _startTime,
+          address: _addressController.text.trim().isEmpty ? null : _addressController.text.trim(),
+          lat: _eventLat,
+          lon: _eventLon,
+          locationType: _locationType,
+          locationPrivacy: _locationPrivacy,
+          tags: _selectedTags,
+          isRecurring: _isRecurring,
+          recurrenceNote: _isRecurring ? _recurrenceController.text.trim() : null,
+          maxAttendees: _maxAttendees,
+        );
+      }
 
       if (mounted) {
+        final action = _isEditing ? 'updated' : 'published';
+        final publishedTitle = title;
+        _resetForm(keepPublishedFlag: true);
+        setState(() {
+          _justPublished = true;
+          _lastPublishedTitle = publishedTitle;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Event published successfully!')),
+          SnackBar(content: Text('Event $action successfully!')),
         );
-        Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error creating event: $e')),
+          SnackBar(content: Text('Error ${_isEditing ? 'updating' : 'creating'} event: $e')),
         );
       }
+    } finally {
+      if (mounted) setState(() => _isPublishing = false);
     }
+  }
+
+  void _resetForm({bool keepPublishedFlag = false}) {
+    _titleController.clear();
+    _descController.clear();
+    _addressController.clear();
+    _recurrenceController.clear();
+    _selectedTemplate = 'Custom';
+    _startTime = DateTime.now().add(const Duration(days: 1));
+    _selectedTags = [];
+    _locationType = 'public_venue';
+    _locationPrivacy = 'post_rsvp';
+    _isRecurring = false;
+    _maxAttendees = null;
+    _eventLat = null;
+    _eventLon = null;
+    if (!keepPublishedFlag) {
+      _justPublished = false;
+      _lastPublishedTitle = null;
+    }
+  }
+
+  void _createAnother() {
+    setState(() {
+      _justPublished = false;
+      _lastPublishedTitle = null;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Host an Activity')),
+      appBar: AppBar(title: Text(_isEditing ? 'Edit Activity' : 'Host an Activity')),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -163,9 +276,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.25),
+                color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.25),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.4)),
+                border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.4)),
               ),
               child: Row(
                 children: [
@@ -185,8 +298,60 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Templates
-            const Text('Start with a template', style: TextStyle(fontWeight: FontWeight.bold)),
+            if (_justPublished) ...[
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '${_isEditing ? 'Updated' : 'Published'}: ${_lastPublishedTitle ?? "Your event"}',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(_isEditing
+                        ? 'Changes saved.'
+                        : 'Your event is live. Others nearby can discover it now.'),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        if (_isEditing)
+                          ElevatedButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text('Done'),
+                          )
+                        else ...[
+                          OutlinedButton(
+                            onPressed: _createAnother,
+                            child: const Text('Create another'),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            onPressed: () => context.go('/home'),
+                            child: const Text('Browse in Discover'),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ] else ...[
+              // Templates
+              const Text('Start with a template', style: TextStyle(fontWeight: FontWeight.bold)),
             Wrap(
               spacing: 8,
               children: _templates.map((t) => ChoiceChip(
@@ -234,34 +399,50 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Date/time (simplified)
+            // Date/time picker (polished)
             ListTile(
               title: const Text('Start Time'),
-              subtitle: Text(_startTime.toString()),
-              trailing: const Icon(Icons.calendar_today),
+              subtitle: Text(DateFormat('MMM d, y  •  h:mm a').format(_startTime)),
+              trailing: const Icon(Icons.edit_calendar),
               onTap: () async {
+                final ctx = context; // capture to avoid async gap lint
                 final date = await showDatePicker(
-                  context: context,
+                  context: ctx,
                   initialDate: _startTime,
                   firstDate: DateTime.now(),
                   lastDate: DateTime.now().add(const Duration(days: 365)),
                 );
-                if (date != null) {
-                  setState(() => _startTime = date);
-                }
+                if (date == null) return;
+
+                final time = await showTimePicker(
+                  // ignore: use_build_context_synchronously
+                  context: ctx,
+                  initialTime: TimeOfDay.fromDateTime(_startTime),
+                );
+                if (time == null || !mounted) return;
+
+                setState(() {
+                  _startTime = DateTime(
+                    date.year,
+                    date.month,
+                    date.day,
+                    time.hour,
+                    time.minute,
+                  );
+                });
               },
             ),
 
             // Location tiers
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
-              value: _locationType,
+              initialValue: _locationType,
               decoration: const InputDecoration(labelText: 'Location Type'),
               items: _locationTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
               onChanged: (v) => setState(() => _locationType = v!),
             ),
             DropdownButtonFormField<String>(
-              value: _locationPrivacy,
+              initialValue: _locationPrivacy,
               decoration: const InputDecoration(labelText: 'Privacy Level'),
               items: _privacyOptions.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
               onChanged: (v) => setState(() => _locationPrivacy = v!),
@@ -269,6 +450,25 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
             TextFormField(
               controller: _addressController,
               decoration: const InputDecoration(labelText: 'Address or description'),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _useCurrentLocation,
+                  icon: const Icon(Icons.my_location, size: 18),
+                  label: const Text('Use my current location'),
+                ),
+                const SizedBox(width: 12),
+                if (_eventLat != null)
+                  Expanded(
+                    child: Text(
+                      '📍 ${_eventLat!.toStringAsFixed(3)}, ${_eventLon!.toStringAsFixed(3)}',
+                      style: const TextStyle(fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
             ),
 
             const SizedBox(height: 16),
@@ -295,15 +495,29 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
             const SizedBox(height: 24),
 
             ElevatedButton(
-              onPressed: _submit,
-              child: const Text('Publish Event'),
+              onPressed: _isPublishing ? null : _submit,
+              child: _isPublishing
+                  ? const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        ),
+                        SizedBox(width: 8),
+                        Text('Saving...'),
+                      ],
+                    )
+                  : Text(_isEditing ? 'Save Changes' : 'Publish Event'),
             ),
 
             const SizedBox(height: 16),
             Text(
-              'Full geocoding, draft saving, keyword enforcement at backend, and attendee limits in full PR3.',
+              'Location lat/lon captured. Full geocoding + map picker in later iteration.',
               style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
+            ],
           ],
         ),
       ),

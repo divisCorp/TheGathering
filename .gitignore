@@ -29,3 +29,16 @@ supabase/.temp/
 
 # Generated
 *.g.dart
+
+# Additional Flutter
+android/local.properties
+**/android/**/build/
+**/ios/**/build/
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+
+# Misc
+*.env
+
+# Node / server (if using @supabase/server or other JS server code)
+node_modules/

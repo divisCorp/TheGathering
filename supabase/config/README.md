@@ -22,7 +22,12 @@ with check ( bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid(
 ## Environment Variables
 Add to .env (never commit):
 SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=eyJhbGci...
+SUPABASE_PUBLISHABLE_KEY=eyJhbGci...   # aka anon / publishable key
+SUPABASE_SECRET_KEY=eyJhbGci...        # service_role - NEVER in client code
+SUPABASE_JWKS_URL=https://your-project.supabase.co/auth/v1/.well-known/jwks.json
+
+# For Flutter client compatibility
+SUPABASE_ANON_KEY=... (same as PUBLISHABLE_KEY)
 
 ## Future (PR3+)
 - Enable PostGIS extension for geo queries

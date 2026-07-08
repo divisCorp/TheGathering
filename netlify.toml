@@ -1,0 +1,13 @@
+[build]
+  command = "flutter build web --release"
+  publish = "build/web"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[build.environment]
+  # Set these in Netlify dashboard or via CLI for production builds
+  # SUPABASE_URL = "https://your-project.supabase.co"
+  # SUPABASE_PUBLISHABLE_KEY = "your-key"

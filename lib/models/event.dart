@@ -43,5 +43,60 @@ class GatheringEvent {
     required this.createdAt,
   });
 
-  // TODO: fromSupabase, toJson for full backend integration
+  factory GatheringEvent.fromSupabase(Map<String, dynamic> json) {
+    // Parse location if present (PostGIS geography returns as string like "POINT(lon lat)")
+    double? lat;
+    double? lon;
+    final loc = json['location'] as String?;
+    if (loc != null && loc.startsWith('POINT(')) {
+      final coords = loc.substring(6, loc.length - 1).split(' ');
+      if (coords.length == 2) {
+        lon = double.tryParse(coords[0]);
+        lat = double.tryParse(coords[1]);
+      }
+    }
+
+    return GatheringEvent(
+      id: json['id'] as String,
+      hostId: json['host_id'] as String,
+      title: json['title'] as String,
+      description: json['description'] as String?,
+      startTime: DateTime.parse(json['start_time'] as String),
+      endTime: json['end_time'] != null ? DateTime.parse(json['end_time'] as String) : null,
+      address: json['address'] as String?,
+      lat: lat,
+      lon: lon,
+      locationType: json['location_type'] as String? ?? 'public_venue',
+      locationPrivacy: json['location_privacy'] as String? ?? 'post_rsvp',
+      tags: (json['tags'] as List<dynamic>?)?.cast<String>() ?? [],
+      isRecurring: json['is_recurring'] as bool? ?? false,
+      recurrenceNote: json['recurrence_note'] as String?,
+      maxAttendees: json['max_attendees'] as int?,
+      cost: (json['cost'] as num?)?.toDouble(),
+      visibility: json['visibility'] as String? ?? 'verified_members',
+      status: json['status'] as String? ?? 'active',
+      createdAt: DateTime.parse(json['created_at'] as String),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'host_id': hostId,
+    'title': title,
+    'description': description,
+    'start_time': startTime.toIso8601String(),
+    'end_time': endTime?.toIso8601String(),
+    'address': address,
+    'location': (lat != null && lon != null) ? 'POINT($lon $lat)' : null,
+    'location_type': locationType,
+    'location_privacy': locationPrivacy,
+    'tags': tags,
+    'is_recurring': isRecurring,
+    'recurrence_note': recurrenceNote,
+    'max_attendees': maxAttendees,
+    'cost': cost,
+    'visibility': visibility,
+    'status': status,
+    'created_at': createdAt.toIso8601String(),
+  };
 }

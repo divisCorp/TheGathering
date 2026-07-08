@@ -5,7 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// - Email + phone
 /// - **Mandatory phone verification**
 /// - Self-attestation with explicit wording and ban consequences
-/// - Verification queue flag for backend (stub for now)
+/// - Verification queue flag for backend (see PR7+ for full implementation)
 class AuthService {
   static const String _attestationText = 
       'I affirm under penalty of community removal that I am a current, active or believing member of The Church of Jesus Christ of Latter-day Saints in good standing and will abide by all app standards and terms; false claims will result in permanent ban and may be reported.';
@@ -44,11 +44,11 @@ class AuthService {
         'attestation_affirmed': true,
         'attestation_text': _attestationText,
         'is_verified_member': false, // Pending review queue per design
-        'verification_status': 'pending_review', // For PR1 stub
+        'verification_status': 'pending_review',
         'created_at': DateTime.now().toIso8601String(),
       });
 
-      // TODO(PR7+): Trigger backend review queue (e.g. via edge function or table insert)
+      // Full backend review queue in later phase (Edge Function example in supabase/functions)
     }
 
     return response;
@@ -90,4 +90,25 @@ class AuthService {
   }
 
   bool get isAuthenticated => SupabaseService.currentUser != null;
+
+  /// Ensure a profile row exists for the current user (called after signup/verify).
+  /// Uses upsert so it's safe.
+  Future<void> ensureProfileExists() async {
+    final user = SupabaseService.currentUser;
+    if (user == null) return;
+
+    try {
+      final meta = user.userMetadata ?? {};
+      await SupabaseService.client.from('profiles').upsert({
+        'id': user.id,
+        'display_name': meta['display_name'] ?? user.email?.split('@').first ?? 'Member',
+        'is_verified_member': meta['is_verified_member'] ?? false,
+        'phone_verified': meta['phone_verified'] ?? false,
+        'verification_status': meta['verification_status'] ?? 'pending_review',
+        'created_at': DateTime.parse(user.createdAt as String? ?? DateTime.now().toIso8601String()).toIso8601String(),
+      });
+    } catch (_) {
+      // Non-fatal; profile screen can still save
+    }
+  }
 }

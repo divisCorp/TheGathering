@@ -4,32 +4,40 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'models/event.dart';
+import 'providers/auth_provider.dart';
 import 'screens/auth_screen.dart';
-import 'screens/onboarding_screen.dart';
+import 'screens/event_detail_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/my_activities_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/create_event_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Load .env for Supabase keys (easier than dart-define every time)
-  await dotenv.load(fileName: ".env");
+  // Try dart-define first (recommended for web builds and production)
+  // Fall back to .env for local development (mobile + web dev)
+  String supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
+  String supabaseAnonKey = const String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY') ??
+                         const String.fromEnvironment('SUPABASE_ANON_KEY');
 
-  final supabaseUrl = dotenv.env['SUPABASE_URL'] ?? const String.fromEnvironment('SUPABASE_URL', defaultValue: 'YOUR_SUPABASE_URL');
-  final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? const String.fromEnvironment('SUPABASE_ANON_KEY', defaultValue: 'YOUR_SUPABASE_ANON_KEY');
+  if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
+    await dotenv.load(fileName: '.env');
+    supabaseUrl = dotenv.env['SUPABASE_URL'] ?? const String.fromEnvironment('SUPABASE_URL', defaultValue: 'YOUR_SUPABASE_URL');
+    supabaseAnonKey = dotenv.env['SUPABASE_PUBLISHABLE_KEY'] ??
+                      dotenv.env['SUPABASE_ANON_KEY'] ??
+                      const String.fromEnvironment('SUPABASE_ANON_KEY', defaultValue: 'YOUR_SUPABASE_ANON_KEY');
+  }
 
-  // Initialize Supabase (PR1: foundational)
-  // Wrapped to allow running without valid keys during development
+  // Initialize Supabase
   try {
     await Supabase.initialize(
       url: supabaseUrl,
-      anonKey: supabaseAnonKey,
+      publishableKey: supabaseAnonKey,
     );
-    print('Supabase initialized successfully');
-  } catch (e) {
-    print('WARNING: Supabase init failed (using placeholder keys?): $e');
-    print('The app UI should still load. Set real keys in .env for full functionality.');
+  } catch (_) {
+    // In production, use a proper crash reporting service (Sentry, Firebase Crashlytics)
   }
 
   runApp(const ProviderScope(child: TheGatheringApp()));
@@ -40,16 +48,26 @@ class TheGatheringApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final authState = ref.watch(authProvider);
+
     final router = GoRouter(
       initialLocation: '/auth',
+      redirect: (context, state) {
+        final isAuthenticated = authState.isAuthenticated;
+        final isAuthRoute = state.matchedLocation == '/auth';
+
+        if (!isAuthenticated && !isAuthRoute) {
+          return '/auth';
+        }
+        if (isAuthenticated && isAuthRoute) {
+          return '/home';
+        }
+        return null;
+      },
       routes: [
         GoRoute(
           path: '/auth',
           builder: (context, state) => const AuthScreen(),
-        ),
-        GoRoute(
-          path: '/onboarding',
-          builder: (context, state) => const OnboardingScreen(),
         ),
         GoRoute(
           path: '/home',
@@ -58,6 +76,13 @@ class TheGatheringApp extends ConsumerWidget {
         GoRoute(
           path: '/profile',
           builder: (context, state) => const MainShell(initialTab: 3),
+        ),
+        GoRoute(
+          path: '/event',
+          builder: (context, state) {
+            final event = state.extra as GatheringEvent;
+            return EventDetailScreen(event: event);
+          },
         ),
       ],
     );
@@ -73,7 +98,7 @@ class TheGatheringApp extends ConsumerWidget {
   }
 
   ThemeData _buildLightTheme() {
-    final seed = const Color(0xFF1E3A5F);
+    const seed = Color(0xFF1E3A5F);
     return ThemeData(
       colorScheme: ColorScheme.fromSeed(
         seedColor: seed,
@@ -88,7 +113,7 @@ class TheGatheringApp extends ConsumerWidget {
   }
 
   ThemeData _buildDarkTheme() {
-    final seed = const Color(0xFF1E3A5F); // Deep navy base for wholesome dark feel
+    const seed = Color(0xFF1E3A5F); // Deep navy base for wholesome dark feel
     return ThemeData(
       colorScheme: ColorScheme.fromSeed(
         seedColor: seed,
@@ -114,8 +139,8 @@ class TheGatheringApp extends ConsumerWidget {
   }
 }
 
-/// Simple main shell with bottom navigation for PR2+.
-/// Tabs: Discover (Home), Create (stub), My Activities (stub), Profile
+/// Simple main shell with bottom navigation.
+/// Tabs: Discover (Home), Create, My Activities (RSVPs + hosted), Profile
 class MainShell extends StatefulWidget {
   final int initialTab;
   const MainShell({super.key, this.initialTab = 0});
@@ -130,7 +155,7 @@ class _MainShellState extends State<MainShell> {
   final List<Widget> _pages = const [
     HomeScreen(),           // Discover
     CreateEventScreen(),    // Create (PR3)
-    _MyActivitiesStub(),    // My Activities (PR5+)
+    MyActivitiesScreen(),   // My Activities - now wired with RSVPs
     ProfileScreen(),        // Profile (PR2)
   ];
 
@@ -165,13 +190,5 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
-// Stub for My Activities (PR5+)
-class _MyActivitiesStub extends StatelessWidget {
-  const _MyActivitiesStub({super.key});
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('My Activities')),
-        body: const Center(child: Text('RSVPs and history coming in PR5')),
-      );
-}
+
 

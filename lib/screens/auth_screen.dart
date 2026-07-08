@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:the_gathering/providers/auth_provider.dart';
 import 'package:the_gathering/services/auth_service.dart';
 
 /// Auth Screen for The Gathering (PR1)
@@ -8,17 +10,15 @@ import 'package:the_gathering/services/auth_service.dart';
 /// - **Mandatory phone verification** (OTP)
 /// - Self-attestation with exact wording and consequences
 /// - Basic login path
-class AuthScreen extends StatefulWidget {
+class AuthScreen extends ConsumerStatefulWidget {
   const AuthScreen({super.key});
 
   @override
-  State<AuthScreen> createState() => _AuthScreenState();
+  ConsumerState<AuthScreen> createState() => _AuthScreenState();
 }
 
-class _AuthScreenState extends State<AuthScreen> {
-  final _authService = AuthService();
+class _AuthScreenState extends ConsumerState<AuthScreen> {
   bool _isLogin = true;
-  bool _isLoading = false;
   bool _affirmedAttestation = false;
   bool _phoneOtpSent = false;
 
@@ -26,8 +26,6 @@ class _AuthScreenState extends State<AuthScreen> {
   final _passwordController = TextEditingController();
   final _phoneController = TextEditingController();
   final _otpController = TextEditingController();
-
-  String? _error;
 
   @override
   void dispose() {
@@ -39,17 +37,15 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _handleSignup() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+    final authNotifier = ref.read(authProvider.notifier);
+    authNotifier.clearError();
 
     try {
       if (!_affirmedAttestation) {
         throw Exception('Please affirm the membership attestation to continue.');
       }
 
-      await _authService.signUp(
+      await authNotifier.signUp(
         email: _emailController.text.trim(),
         password: _passwordController.text,
         phone: _phoneController.text.trim(),
@@ -60,60 +56,59 @@ class _AuthScreenState extends State<AuthScreen> {
         _phoneOtpSent = true;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Verification code sent to your phone. Enter OTP below.')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Verification code sent to your phone. Enter OTP below.')),
+        );
+      }
     } catch (e) {
-      setState(() => _error = e.toString());
-    } finally {
-      setState(() => _isLoading = false);
+      // error in provider
     }
   }
 
   Future<void> _verifyOtp() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+    final authNotifier = ref.read(authProvider.notifier);
+    authNotifier.clearError();
 
     try {
-      await _authService.verifyPhone(
+      await authNotifier.verifyPhone(
         phone: _phoneController.text.trim(),
         otp: _otpController.text.trim(),
       );
 
-      // Go to main shell (home tab). Profile setup required in PR2 for activation.
       if (mounted) {
         context.go('/home');
       }
     } catch (e) {
-      setState(() => _error = e.toString());
-    } finally {
-      setState(() => _isLoading = false);
+      // error in provider
     }
   }
 
   Future<void> _handleLogin() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+    final authNotifier = ref.read(authProvider.notifier);
+    authNotifier.clearError();
 
     try {
-      await _authService.signInWithEmail(
+      await authNotifier.signIn(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
-      if (mounted) context.go('/home'); // Limited for PR1
+
+      if (mounted) {
+        context.go('/home');
+      }
     } catch (e) {
-      setState(() => _error = e.toString());
-    } finally {
-      setState(() => _isLoading = false);
+      // error in provider
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final authState = ref.watch(authProvider);
+
+    final isLoading = authState.isLoading;
+    final error = authState.error;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('The Gathering'),
@@ -152,8 +147,8 @@ class _AuthScreenState extends State<AuthScreen> {
                 setState(() {
                   _isLogin = set.first;
                   _phoneOtpSent = false;
-                  _error = null;
                 });
+                ref.read(authProvider.notifier).clearError();
               },
             ),
             const SizedBox(height: 24),
@@ -226,16 +221,16 @@ class _AuthScreenState extends State<AuthScreen> {
                 ),
                 const SizedBox(height: 16),
                 ElevatedButton(
-                  onPressed: _isLoading ? null : _verifyOtp,
-                  child: _isLoading
+                  onPressed: isLoading ? null : _verifyOtp,
+                  child: isLoading
                       ? const CircularProgressIndicator()
                       : const Text('Verify Phone & Continue'),
                 ),
               ] else ...[
                 const SizedBox(height: 16),
                 ElevatedButton(
-                  onPressed: _isLoading ? null : _handleSignup,
-                  child: _isLoading
+                  onPressed: isLoading ? null : _handleSignup,
+                  child: isLoading
                       ? const CircularProgressIndicator()
                       : const Text('Create Account & Send Verification Code'),
                 ),
@@ -254,16 +249,16 @@ class _AuthScreenState extends State<AuthScreen> {
               ),
               const SizedBox(height: 24),
               ElevatedButton(
-                onPressed: _isLoading ? null : _handleLogin,
-                child: _isLoading
+                onPressed: isLoading ? null : _handleLogin,
+                child: isLoading
                     ? const CircularProgressIndicator()
                     : const Text('Sign In'),
               ),
             ],
 
-            if (_error != null) ...[
+            if (error != null) ...[
               const SizedBox(height: 16),
-              Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              Text(error, style: TextStyle(color: Theme.of(context).colorScheme.error)),
             ],
 
             const SizedBox(height: 32),
