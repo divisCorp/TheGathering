@@ -1,12 +1,8 @@
 {
-  "buildCommand": "flutter build web --release",
+  "framework": "other",
+  "buildCommand": "flutter build web --release --dart-define=SUPABASE_URL=$SUPABASE_URL --dart-define=SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY",
   "outputDirectory": "build/web",
-  "framework": "flutter",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
-  ],
-  "env": {
-    "SUPABASE_URL": "@supabase_url",
-    "SUPABASE_PUBLISHABLE_KEY": "@supabase_publishable_key"
-  }
+  ]
 }
