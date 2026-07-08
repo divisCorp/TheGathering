@@ -33,6 +33,7 @@ jobs:
         run: |
           flutter pub get
           flutter build web --release \
+            --base-href /TheGathering/ \
             --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
             --dart-define=SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
 
