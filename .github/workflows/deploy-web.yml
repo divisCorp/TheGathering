@@ -29,6 +29,11 @@ jobs:
       - name: Enable web
         run: flutter config --enable-web
 
+      - name: Prepare build assets
+        run: |
+          mkdir -p assets
+          cp .env.example .env
+
       - name: Build web
         run: |
           flutter pub get
