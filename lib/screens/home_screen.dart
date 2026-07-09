@@ -36,7 +36,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   double _currentLat = 40.76;
   double _currentLon = -111.89;
   bool _locationLoaded = false;
-  double _radiusMiles = 15.0;
+  double _radiusMiles = 25.0;
   String _dateFilter = 'this_week';
   late final MapController _mapController = MapController();
 
@@ -230,7 +230,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
             if (_locationLoaded)
               Text(
-                '${_currentLat.toStringAsFixed(2)}, ${_currentLon.toStringAsFixed(2)}',
+                '${_currentLat.toStringAsFixed(2)}, ${_currentLon.toStringAsFixed(2)} (app location)',
                 style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             const SizedBox(height: 8),
@@ -297,6 +297,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 }
               },
             ),
+            const SizedBox(height: 4),
+            Text(
+              'Tip: Events appear if their location is within radius of app\'s location and start time in timeframe. Use simulator location to match.',
+              style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
             const SizedBox(height: 8),
 
             // Basic filter chips (PR4 direction)
@@ -324,6 +329,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
             const SizedBox(height: 4),
+
+            if (_searchQuery.isNotEmpty || _selectedFilter != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _selectedFilter = null);
+                    _loadEvents(reset: true);
+                  },
+                  icon: const Icon(Icons.clear, size: 16),
+                  label: const Text('Clear search & filters'),
+                ),
+              ),
 
             if (!_isLoading && _filteredEvents.isNotEmpty)
               Text(
@@ -411,8 +430,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         ? Center(
                             child: Text(
                               _searchQuery.isNotEmpty || _selectedFilter != null
-                                  ? 'No events match your search or filter.'
-                                  : 'No events yet. Be the first to host one!',
+                                  ? 'No events match your search or filter. Try selecting "All" or clearing search.'
+                                  : 'No events found within ${_radiusMiles.toStringAsFixed(0)} mi for ${_getFilterLabel().toLowerCase()}. Try increasing the radius, changing the timeframe, or be the first to host one!',
                               textAlign: TextAlign.center,
                             ),
                           )
