@@ -35,8 +35,15 @@ class AuthService {
     );
 
     if (response.user != null) {
-      // Step 2: Send phone OTP (mandatory verification)
-      await SupabaseService.sendPhoneOtp(phone);
+      // Step 2: Send phone verification code for the email user (links phone to account)
+      // This requires a session from email signup (disable "Confirm email" in Supabase Auth settings for seamless flow)
+      try {
+        await SupabaseService.sendPhoneVerificationForCurrentUser(phone);
+      } catch (e) {
+        // If no session (email confirmation required), user must confirm email first,
+        // then can re-initiate phone verification after signing in.
+        // For now, continue; OTP screen will be shown but verify may need re-send after login.
+      }
 
       // Store attestation and verification pending flag in metadata
       await SupabaseService.updateUserMetadata({
@@ -47,6 +54,9 @@ class AuthService {
         'verification_status': 'pending_review',
         'created_at': DateTime.now().toIso8601String(),
       });
+
+      // Ensure basic profile exists early (will be updated after phone verify)
+      await ensureProfileExists();
 
       // Full backend review queue in later phase (Edge Function example in supabase/functions)
     }

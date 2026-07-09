@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:the_gathering/providers/auth_provider.dart';
+import 'package:the_gathering/providers/current_profile_provider.dart';
 import 'package:the_gathering/services/auth_service.dart';
 
 /// Auth Screen for The Gathering (PR1)
@@ -77,7 +78,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       );
 
       if (mounted) {
-        context.go('/home');
+        // Ensure profile provider is fresh for the new user
+        await ref.read(currentProfileProvider.notifier).refresh();
+        // New users go to profile to complete setup (avatar required, etc.)
+        context.go('/profile');
       }
     } catch (e) {
       // error in provider
@@ -144,38 +148,42 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               ],
               selected: {_isLogin},
               onSelectionChanged: (set) {
-                setState(() {
-                  _isLogin = set.first;
-                  _phoneOtpSent = false;
-                });
-                ref.read(authProvider.notifier).clearError();
+                if (!_phoneOtpSent) {
+                  setState(() {
+                    _isLogin = set.first;
+                    _phoneOtpSent = false;
+                  });
+                  ref.read(authProvider.notifier).clearError();
+                }
               },
             ),
             const SizedBox(height: 24),
 
             if (!_isLogin) ...[
               // Sign up fields
-              TextField(
-                controller: _emailController,
-                decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
-                keyboardType: TextInputType.emailAddress,
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _passwordController,
-                decoration: const InputDecoration(labelText: 'Password', border: OutlineInputBorder()),
-                obscureText: true,
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _phoneController,
-                decoration: const InputDecoration(
-                  labelText: 'Phone Number (for verification)',
-                  hintText: '+1 555 123 4567',
-                  border: OutlineInputBorder(),
+              if (!_phoneOtpSent) ...[
+                TextField(
+                  controller: _emailController,
+                  decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
+                  keyboardType: TextInputType.emailAddress,
                 ),
-                keyboardType: TextInputType.phone,
-              ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _passwordController,
+                  decoration: const InputDecoration(labelText: 'Password', border: OutlineInputBorder()),
+                  obscureText: true,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _phoneController,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone Number (for verification)',
+                    hintText: '+1 555 123 4567',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.phone,
+                ),
+              ],
               const SizedBox(height: 24),
 
               // Mandatory Self-Attestation (exact per design)

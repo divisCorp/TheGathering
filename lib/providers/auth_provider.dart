@@ -27,7 +27,7 @@ class AuthState {
     );
   }
 
-  bool get isAuthenticated => user != null;
+  bool get isAuthenticated => user != null && (user.phone?.isNotEmpty ?? false);
 }
 
 /// Manages authentication state reactively.
@@ -68,7 +68,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
         phone: phone,
         affirmedAttestation: affirmedAttestation,
       );
-      // Navigation handled in UI after OTP
+      // Set user early (from email signup); full isAuthenticated requires phone verify
+      final currentUser = SupabaseService.currentUser;
+      state = state.copyWith(user: currentUser, isLoading: false, error: null);
+      // Navigation (OTP) handled in UI
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
       rethrow;
@@ -85,6 +88,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       await _authService.verifyPhone(phone: phone, otp: otp);
       await _authService.ensureProfileExists();
+      final currentUser = SupabaseService.currentUser;
+      state = state.copyWith(user: currentUser, isLoading: false, error: null);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
       rethrow;
@@ -101,6 +106,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       await _authService.signInWithEmail(email: email, password: password);
       await _authService.ensureProfileExists();
+      final currentUser = SupabaseService.currentUser;
+      state = state.copyWith(user: currentUser, isLoading: false, error: null);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
       rethrow;

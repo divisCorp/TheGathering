@@ -21,8 +21,15 @@ class SupabaseService {
   }
 
   /// Phone OTP - mandatory per PR1 design
+  /// Use signInWithOtp for unauthenticated phone auth flows.
   static Future<void> sendPhoneOtp(String phone) async {
     await client.auth.signInWithOtp(phone: phone);
+  }
+
+  /// Send phone verification code for an *authenticated* user (e.g. after email signup).
+  /// This links the phone to the current user account.
+  static Future<void> sendPhoneVerificationForCurrentUser(String phone) async {
+    await client.auth.updateUser(UserAttributes(phone: phone));
   }
 
   static Future<AuthResponse> verifyPhoneOtp({
