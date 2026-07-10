@@ -27,7 +27,7 @@ class AuthState {
     );
   }
 
-  bool get isAuthenticated => user?.phone?.isNotEmpty ?? false;
+  bool get isAuthenticated => user != null && (user!.phone?.isNotEmpty ?? false);
 }
 
 /// Manages authentication state reactively.
