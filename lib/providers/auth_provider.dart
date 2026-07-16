@@ -19,14 +19,17 @@ class AuthState {
     User? user,
     bool? isLoading,
     String? error,
+    bool clearError = false,
+    bool clearUser = false,
   }) {
     return AuthState(
-      user: user ?? this.user,
+      user: clearUser ? null : (user ?? this.user),
       isLoading: isLoading ?? this.isLoading,
-      error: error,
+      error: clearError ? null : (error ?? this.error),
     );
   }
 
+  /// Full access requires both a session user and a verified phone number.
   bool get isAuthenticated {
     final currentUser = user;
     return currentUser != null && (currentUser.phone?.isNotEmpty ?? false);
@@ -42,19 +45,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
   final AuthService _authService = AuthService();
 
   void _init() {
-    // Listen to auth state changes
     SupabaseService.client.auth.onAuthStateChange.listen((data) {
-      final session = data.session;
+      final u = data.session?.user;
       state = state.copyWith(
-        user: session?.user,
+        user: u,
+        clearUser: u == null,
         isLoading: false,
-        error: null,
+        clearError: true,
       );
     });
 
-    // Set initial state
     final currentUser = SupabaseService.currentUser;
-    state = state.copyWith(user: currentUser);
+    if (currentUser != null) {
+      state = state.copyWith(user: currentUser);
+    }
   }
 
   Future<void> signUp({
@@ -63,7 +67,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     required String phone,
     required bool affirmedAttestation,
   }) async {
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true, clearError: true);
     try {
       await _authService.signUp(
         email: email,
@@ -71,15 +75,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
         phone: phone,
         affirmedAttestation: affirmedAttestation,
       );
-      // Set user early (from email signup); full isAuthenticated requires phone verify
+      // User may exist from email signup; full isAuthenticated still needs phone verify.
       final currentUser = SupabaseService.currentUser;
-      state = state.copyWith(user: currentUser, isLoading: false, error: null);
-      // Navigation (OTP) handled in UI
+      state = state.copyWith(
+        user: currentUser,
+        isLoading: false,
+        clearError: true,
+      );
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
       rethrow;
-    } finally {
-      state = state.copyWith(isLoading: false);
     }
   }
 
@@ -87,17 +92,19 @@ class AuthNotifier extends StateNotifier<AuthState> {
     required String phone,
     required String otp,
   }) async {
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true, clearError: true);
     try {
       await _authService.verifyPhone(phone: phone, otp: otp);
       await _authService.ensureProfileExists();
       final currentUser = SupabaseService.currentUser;
-      state = state.copyWith(user: currentUser, isLoading: false, error: null);
+      state = state.copyWith(
+        user: currentUser,
+        isLoading: false,
+        clearError: true,
+      );
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
       rethrow;
-    } finally {
-      state = state.copyWith(isLoading: false);
     }
   }
 
@@ -105,17 +112,19 @@ class AuthNotifier extends StateNotifier<AuthState> {
     required String email,
     required String password,
   }) async {
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true, clearError: true);
     try {
       await _authService.signInWithEmail(email: email, password: password);
       await _authService.ensureProfileExists();
       final currentUser = SupabaseService.currentUser;
-      state = state.copyWith(user: currentUser, isLoading: false, error: null);
+      state = state.copyWith(
+        user: currentUser,
+        isLoading: false,
+        clearError: true,
+      );
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
       rethrow;
-    } finally {
-      state = state.copyWith(isLoading: false);
     }
   }
 
@@ -125,7 +134,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   void clearError() {
-    state = state.copyWith(error: null);
+    state = state.copyWith(clearError: true);
   }
 }
 

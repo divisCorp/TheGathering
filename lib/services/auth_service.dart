@@ -1,5 +1,5 @@
-import 'package:the_gathering/services/supabase_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:the_gathering/services/supabase_service.dart';
 
 /// Auth service implementing The Gathering requirements from design doc PR1.
 /// - Email + phone
@@ -7,7 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// - Self-attestation with explicit wording and ban consequences
 /// - Verification queue flag for backend (see PR7+ for full implementation)
 class AuthService {
-  static const String _attestationText = 
+  static const String _attestationText =
       'I affirm under penalty of community removal that I am a current, active or believing member of The Church of Jesus Christ of Latter-day Saints in good standing and will abide by all app standards and terms; false claims will result in permanent ban and may be reported.';
 
   /// Returns the required attestation text for UI display.
@@ -15,9 +15,9 @@ class AuthService {
 
   /// Sign up flow for PR1.
   /// 1. Basic email/password signup
-  /// 2. Send phone OTP (mandatory)
+  /// 2. Send phone OTP (mandatory) via unauth OTP so SMS is always delivered
   /// 3. User must affirm attestation
-  /// 4. On success, set metadata with attestation + is_verified_member = false (pending review)
+  /// 4. On success (when session exists), set metadata + profile row
   Future<AuthResponse> signUp({
     required String email,
     required String password,
@@ -28,37 +28,38 @@ class AuthService {
       throw Exception('You must affirm the membership attestation to continue.');
     }
 
-    // Step 1: Email signup
     final response = await SupabaseService.signUpWithEmail(
       email: email,
       password: password,
     );
 
-    if (response.user != null) {
-      // Step 2: Send phone verification code for the email user (links phone to account)
-      // This requires a session from email signup (disable "Confirm email" in Supabase Auth settings for seamless flow)
+    if (response.user == null) {
+      throw Exception('Sign up failed. Please try again.');
+    }
+
+    // Always send phone OTP so verification works even when email confirm
+    // is enabled and there is no session yet after signUp.
+    await SupabaseService.sendPhoneOtp(phone);
+
+    final hasSession = response.session != null;
+    if (hasSession) {
+      // Link phone on the authenticated user when possible.
       try {
         await SupabaseService.sendPhoneVerificationForCurrentUser(phone);
-      } catch (e) {
-        // If no session (email confirmation required), user must confirm email first,
-        // then can re-initiate phone verification after signing in.
-        // For now, continue; OTP screen will be shown but verify may need re-send after login.
+      } catch (_) {
+        // Non-fatal: unauth OTP already sent; verifyPhone will complete auth.
       }
 
-      // Store attestation and verification pending flag in metadata
       await SupabaseService.updateUserMetadata({
         'phone': phone,
         'attestation_affirmed': true,
         'attestation_text': _attestationText,
-        'is_verified_member': false, // Pending review queue per design
+        'is_verified_member': false,
         'verification_status': 'pending_review',
         'created_at': DateTime.now().toIso8601String(),
       });
 
-      // Ensure basic profile exists early (will be updated after phone verify)
       await ensureProfileExists();
-
-      // Full backend review queue in later phase (Edge Function example in supabase/functions)
     }
 
     return response;
@@ -75,10 +76,14 @@ class AuthService {
     );
 
     if (response.user != null) {
-      // Mark phone verified (still pending member review for full features)
       await SupabaseService.updateUserMetadata({
+        'phone': phone,
         'phone_verified': true,
         'phone_verified_at': DateTime.now().toIso8601String(),
+        'attestation_affirmed': true,
+        'attestation_text': _attestationText,
+        'is_verified_member': false,
+        'verification_status': 'pending_review',
       });
     }
 
@@ -111,14 +116,17 @@ class AuthService {
       final meta = user.userMetadata ?? {};
       await SupabaseService.client.from('profiles').upsert({
         'id': user.id,
-        'display_name': meta['display_name'] ?? user.email?.split('@').first ?? 'Member',
+        'display_name':
+            meta['display_name'] ?? user.email?.split('@').first ?? 'Member',
         'is_verified_member': meta['is_verified_member'] ?? false,
         'phone_verified': meta['phone_verified'] ?? false,
         'verification_status': meta['verification_status'] ?? 'pending_review',
-        'created_at': DateTime.parse(user.createdAt as String? ?? DateTime.now().toIso8601String()).toIso8601String(),
+        'created_at': DateTime.parse(
+          user.createdAt as String? ?? DateTime.now().toIso8601String(),
+        ).toIso8601String(),
       });
     } catch (_) {
-      // Non-fatal; profile screen can still save
+      // Non-fatal; profile screen can still save.
     }
   }
 }

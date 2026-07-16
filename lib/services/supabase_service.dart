@@ -9,25 +9,25 @@ class SupabaseService {
     // Already initialized in main.dart
   }
 
-  /// Example: Sign up with email (basic). Phone handled separately for verification.
+  /// Sign up with email (basic). Phone handled separately for verification.
   static Future<AuthResponse> signUpWithEmail({
     required String email,
     required String password,
   }) async {
-    return await client.auth.signUp(
+    return client.auth.signUp(
       email: email,
       password: password,
     );
   }
 
-  /// Phone OTP - mandatory per PR1 design
+  /// Phone OTP — mandatory per PR1 design.
   /// Use signInWithOtp for unauthenticated phone auth flows.
   static Future<void> sendPhoneOtp(String phone) async {
     await client.auth.signInWithOtp(phone: phone);
   }
 
-  /// Send phone verification code for an *authenticated* user (e.g. after email signup).
-  /// This links the phone to the current user account.
+  /// Send phone verification for an *authenticated* user (e.g. after email signup).
+  /// Links the phone to the current user account.
   static Future<void> sendPhoneVerificationForCurrentUser(String phone) async {
     await client.auth.updateUser(UserAttributes(phone: phone));
   }
@@ -36,14 +36,14 @@ class SupabaseService {
     required String phone,
     required String token,
   }) async {
-    return await client.auth.verifyOTP(
+    return client.auth.verifyOTP(
       phone: phone,
       token: token,
       type: OtpType.sms,
     );
   }
 
-  /// Self-attestation will be stored in user metadata or profiles table.
+  /// Self-attestation and flags stored in user metadata / profiles.
   static Future<void> updateUserMetadata(Map<String, dynamic> metadata) async {
     await client.auth.updateUser(
       UserAttributes(data: metadata),

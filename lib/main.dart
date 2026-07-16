@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,34 +14,59 @@ import 'screens/my_activities_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/create_event_screen.dart';
 
+/// Global key so SnackBars work reliably with GoRouter (esp. web).
+final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Try dart-define first (recommended for web builds and production)
-  // Fall back to .env for local development (mobile + web dev)
+  // Prefer dart-define (web/prod builds); fall back to .env for local dev.
   String supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
-  String supabaseAnonKey = const String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY') ??
-                         const String.fromEnvironment('SUPABASE_ANON_KEY');
+  String supabaseAnonKey =
+      const String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY');
+  if (supabaseAnonKey.isEmpty) {
+    supabaseAnonKey = const String.fromEnvironment('SUPABASE_ANON_KEY');
+  }
 
   if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
-    // Only load .env in debug mode or when not using dart-define (local dev)
     if (!const bool.fromEnvironment('dart.vm.product')) {
       await dotenv.load(fileName: '.env');
-      supabaseUrl = dotenv.env['SUPABASE_URL'] ?? const String.fromEnvironment('SUPABASE_URL', defaultValue: 'YOUR_SUPABASE_URL');
+      supabaseUrl = dotenv.env['SUPABASE_URL'] ??
+          const String.fromEnvironment(
+            'SUPABASE_URL',
+            defaultValue: 'YOUR_SUPABASE_URL',
+          );
       supabaseAnonKey = dotenv.env['SUPABASE_PUBLISHABLE_KEY'] ??
-                        dotenv.env['SUPABASE_ANON_KEY'] ??
-                        const String.fromEnvironment('SUPABASE_ANON_KEY', defaultValue: 'YOUR_SUPABASE_ANON_KEY');
+          dotenv.env['SUPABASE_ANON_KEY'] ??
+          const String.fromEnvironment(
+            'SUPABASE_ANON_KEY',
+            defaultValue: 'YOUR_SUPABASE_ANON_KEY',
+          );
     }
   }
 
-  // Initialize Supabase
+  if (kDebugMode &&
+      (supabaseUrl.contains('YOUR_') ||
+          supabaseAnonKey.contains('YOUR_') ||
+          supabaseUrl.isEmpty ||
+          supabaseAnonKey.isEmpty)) {
+    debugPrint(
+      '[main] WARNING: Supabase keys are placeholders or empty. '
+      'Auth will fail. Use --dart-define or a valid .env.',
+    );
+  }
+
   try {
     await Supabase.initialize(
       url: supabaseUrl,
       publishableKey: supabaseAnonKey,
     );
-  } catch (_) {
-    // In production, use a proper crash reporting service (Sentry, Firebase Crashlytics)
+  } catch (e) {
+    if (kDebugMode) {
+      debugPrint('[main] Supabase initialize ERROR: $e');
+    }
+    // Continue; API calls surface errors in the UI.
   }
 
   runApp(const ProviderScope(child: TheGatheringApp()));
@@ -59,12 +85,8 @@ class TheGatheringApp extends ConsumerWidget {
         final isAuthenticated = authState.isAuthenticated;
         final isAuthRoute = state.matchedLocation == '/auth';
 
-        if (!isAuthenticated && !isAuthRoute) {
-          return '/auth';
-        }
-        if (isAuthenticated && isAuthRoute) {
-          return '/home';
-        }
+        if (!isAuthenticated && !isAuthRoute) return '/auth';
+        if (isAuthenticated && isAuthRoute) return '/home';
         return null;
       },
       routes: [
@@ -92,6 +114,7 @@ class TheGatheringApp extends ConsumerWidget {
 
     return MaterialApp.router(
       title: 'The Gathering',
+      scaffoldMessengerKey: scaffoldMessengerKey,
       themeMode: ThemeMode.dark,
       theme: _buildLightTheme(),
       darkTheme: _buildDarkTheme(),

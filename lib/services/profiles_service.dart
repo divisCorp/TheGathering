@@ -23,7 +23,6 @@ class ProfilesService {
           .maybeSingle();
 
       if (response != null) {
-        // Merge some auth data
         final profile = UserProfile.fromSupabase(response);
         return UserProfile(
           id: profile.id,
@@ -50,12 +49,15 @@ class ProfilesService {
     return UserProfile(
       id: user.id,
       email: user.email,
-      phone: meta['phone'] as String?,
-      displayName: meta['display_name'] as String? ?? user.email?.split('@').first ?? 'Member',
+      phone: meta['phone'] as String? ?? user.phone,
+      displayName:
+          meta['display_name'] as String? ?? user.email?.split('@').first ?? 'Member',
       interests: (meta['interests'] as List<dynamic>?)?.cast<String>() ?? [],
       isVerifiedMember: meta['is_verified_member'] as bool? ?? false,
       avatarUrl: null,
-      createdAt: DateTime.parse(user.createdAt as String? ?? DateTime.now().toIso8601String()),
+      createdAt: DateTime.parse(
+        user.createdAt as String? ?? DateTime.now().toIso8601String(),
+      ),
     );
   }
 
@@ -66,7 +68,6 @@ class ProfilesService {
     if (user == null) throw Exception('Not authenticated');
 
     final data = profile.toSupabase();
-    // Ensure id matches auth user
     data['id'] = user.id;
 
     final response = await _client
@@ -75,7 +76,6 @@ class ProfilesService {
         .select()
         .single();
 
-    // Also sync key fields to auth metadata (used in signup flow)
     await SupabaseService.updateUserMetadata({
       'display_name': profile.displayName,
       'interests': profile.interests,
@@ -88,7 +88,6 @@ class ProfilesService {
 
   /// Upload avatar image to Supabase Storage (avatars bucket).
   /// Returns a public URL (requires the bucket to be public).
-  /// Assumes bucket 'avatars' exists and has proper policies.
   static Future<String> uploadAvatar(XFile image, String userId) async {
     final bytes = await image.readAsBytes();
     final fileExt = image.path.split('.').last.toLowerCase();
@@ -101,10 +100,8 @@ class ProfilesService {
       fileOptions: const FileOptions(contentType: 'image/*'),
     );
 
-    // IMPORTANT: Bucket 'avatars' must be created as PUBLIC in Supabase dashboard
-    // for getPublicUrl to work without auth tokens.
+    // Bucket 'avatars' must be public in Supabase for getPublicUrl.
     // Also apply policies from supabase/storage_policies.sql
-    final publicUrl = _client.storage.from('avatars').getPublicUrl(path);
-    return publicUrl;
+    return _client.storage.from('avatars').getPublicUrl(path);
   }
 }
