@@ -8,32 +8,36 @@ class AuthState {
   final User? user;
   final bool isLoading;
   final String? error;
+  final String? info;
 
   const AuthState({
     this.user,
     this.isLoading = false,
     this.error,
+    this.info,
   });
 
   AuthState copyWith({
     User? user,
     bool? isLoading,
     String? error,
+    String? info,
     bool clearError = false,
+    bool clearInfo = false,
     bool clearUser = false,
   }) {
     return AuthState(
       user: clearUser ? null : (user ?? this.user),
       isLoading: isLoading ?? this.isLoading,
       error: clearError ? null : (error ?? this.error),
+      info: clearInfo ? null : (info ?? this.info),
     );
   }
 
-  /// Full access requires both a session user and a verified phone number.
-  bool get isAuthenticated {
-    final currentUser = user;
-    return currentUser != null && (currentUser.phone?.isNotEmpty ?? false);
-  }
+  /// Session present = signed in.
+  /// Phone is preferred for trust (see profile/phone_verified) but must not
+  /// block the app when Supabase Phone provider is disabled.
+  bool get isAuthenticated => user != null;
 }
 
 /// Manages authentication state reactively.
@@ -45,45 +49,56 @@ class AuthNotifier extends StateNotifier<AuthState> {
   final AuthService _authService = AuthService();
 
   void _init() {
-    SupabaseService.client.auth.onAuthStateChange.listen((data) {
-      final u = data.session?.user;
-      state = state.copyWith(
-        user: u,
-        clearUser: u == null,
-        isLoading: false,
-        clearError: true,
-      );
-    });
+    try {
+      SupabaseService.client.auth.onAuthStateChange.listen((data) {
+        final u = data.session?.user;
+        state = state.copyWith(
+          user: u,
+          clearUser: u == null,
+          isLoading: false,
+        );
+      });
 
-    final currentUser = SupabaseService.currentUser;
-    if (currentUser != null) {
-      state = state.copyWith(user: currentUser);
+      final currentUser = SupabaseService.currentUser;
+      if (currentUser != null) {
+        state = state.copyWith(user: currentUser);
+      }
+    } catch (e) {
+      state = state.copyWith(
+        error: 'Auth failed to start. Check Supabase configuration. ($e)',
+      );
     }
   }
 
-  Future<void> signUp({
+  Future<SignUpResult> signUp({
     required String email,
     required String password,
     required String phone,
     required bool affirmedAttestation,
   }) async {
-    state = state.copyWith(isLoading: true, clearError: true);
+    state = state.copyWith(
+      isLoading: true,
+      clearError: true,
+      clearInfo: true,
+    );
     try {
-      await _authService.signUp(
+      final result = await _authService.signUp(
         email: email,
         password: password,
         phone: phone,
         affirmedAttestation: affirmedAttestation,
       );
-      // User may exist from email signup; full isAuthenticated still needs phone verify.
       final currentUser = SupabaseService.currentUser;
       state = state.copyWith(
         user: currentUser,
         isLoading: false,
         clearError: true,
+        info: result.message,
       );
+      return result;
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      final message = _friendly(e);
+      state = state.copyWith(isLoading: false, error: message, clearInfo: true);
       rethrow;
     }
   }
@@ -92,7 +107,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
     required String phone,
     required String otp,
   }) async {
-    state = state.copyWith(isLoading: true, clearError: true);
+    state = state.copyWith(
+      isLoading: true,
+      clearError: true,
+      clearInfo: true,
+    );
     try {
       await _authService.verifyPhone(phone: phone, otp: otp);
       await _authService.ensureProfileExists();
@@ -101,9 +120,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
         user: currentUser,
         isLoading: false,
         clearError: true,
+        info: 'Phone verified.',
       );
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(
+        isLoading: false,
+        error: _friendly(e),
+        clearInfo: true,
+      );
       rethrow;
     }
   }
@@ -112,7 +136,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
     required String email,
     required String password,
   }) async {
-    state = state.copyWith(isLoading: true, clearError: true);
+    state = state.copyWith(
+      isLoading: true,
+      clearError: true,
+      clearInfo: true,
+    );
     try {
       await _authService.signInWithEmail(email: email, password: password);
       await _authService.ensureProfileExists();
@@ -123,7 +151,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
         clearError: true,
       );
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(
+        isLoading: false,
+        error: _friendly(e),
+        clearInfo: true,
+      );
       rethrow;
     }
   }
@@ -134,7 +166,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   void clearError() {
-    state = state.copyWith(clearError: true);
+    state = state.copyWith(clearError: true, clearInfo: true);
+  }
+
+  void setError(String message) {
+    state = state.copyWith(error: message, clearInfo: true, isLoading: false);
+  }
+
+  void setInfo(String message) {
+    state = state.copyWith(info: message, clearError: true);
+  }
+
+  static String _friendly(Object e) {
+    var raw = e.toString();
+    raw = raw.replaceFirst(RegExp(r'^(Exception|AuthException):\s*'), '');
+    return raw.trim().isEmpty ? 'Something went wrong. Please try again.' : raw.trim();
   }
 }
 
