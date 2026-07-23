@@ -1,16 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:the_gathering/main.dart' show scaffoldMessengerKey;
 import 'package:the_gathering/providers/auth_provider.dart';
 import 'package:the_gathering/providers/current_profile_provider.dart';
 import 'package:the_gathering/services/auth_service.dart';
 
-/// Auth Screen for The Gathering (PR1)
-/// Implements:
-/// - Email + Phone
-/// - Phone OTP when Supabase Phone provider is enabled
-/// - Self-attestation with exact wording and consequences
-/// - Basic login path
+/// Auth screen: Sign In + Create Account.
 class AuthScreen extends ConsumerStatefulWidget {
   const AuthScreen({super.key});
 
@@ -19,9 +15,12 @@ class AuthScreen extends ConsumerStatefulWidget {
 }
 
 class _AuthScreenState extends ConsumerState<AuthScreen> {
-  bool _isLogin = true;
+  /// false = Create Account (default after sign-out so new users land here).
+  bool _isLogin = false;
   bool _affirmedAttestation = false;
   bool _phoneOtpSent = false;
+  /// Local submitting flag — survives independently of provider rebuilds.
+  bool _submitting = false;
 
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -37,7 +36,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     super.dispose();
   }
 
-  /// Normalize phone to E.164-ish form: strip separators, ensure leading +.
   String _normalizePhone(String input) {
     var p = input.trim().replaceAll(RegExp(r'[\s\-\(\)\.]'), '');
     if (p.isNotEmpty && !p.startsWith('+')) {
@@ -47,23 +45,25 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   }
 
   void _notify(String message, {bool isError = false}) {
-    if (!mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
+    final messenger =
+        scaffoldMessengerKey.currentState ?? ScaffoldMessenger.maybeOf(context);
+    messenger?.hideCurrentSnackBar();
+    messenger?.showSnackBar(
       SnackBar(
         content: Text(message),
         backgroundColor: isError ? Colors.red.shade800 : null,
-        duration: Duration(seconds: isError ? 6 : 4),
+        duration: Duration(seconds: isError ? 7 : 4),
       ),
     );
   }
 
   Future<void> _handleSignup() async {
+    if (_submitting) return;
+
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     final phoneRaw = _phoneController.text.trim();
-    final phone = _normalizePhone(phoneRaw);
+    final phone = phoneRaw.isEmpty ? '' : _normalizePhone(phoneRaw);
     final authNotifier = ref.read(authProvider.notifier);
 
     authNotifier.clearError();
@@ -79,16 +79,14 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       return;
     }
     if (!_affirmedAttestation) {
-      authNotifier.setError(
-        'Check the membership attestation box to create an account.',
-      );
-      _notify(
-        'Check the membership attestation box to create an account.',
-        isError: true,
-      );
+      const msg =
+          'Check the membership attestation box, then tap Create Account again.';
+      authNotifier.setError(msg);
+      _notify(msg, isError: true);
       return;
     }
 
+    setState(() => _submitting = true);
     try {
       final result = await authNotifier.signUp(
         email: email,
@@ -108,11 +106,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           _notify(result.message ?? 'Account created.');
           await ref.read(currentProfileProvider.notifier).refresh();
           if (!mounted) return;
+          // Router also redirects authenticated users off /auth → /home.
           context.go('/profile');
           break;
         case SignUpOutcome.emailConfirmationRequired:
-          _notify(result.message ?? 'Check your email to confirm.', isError: false);
-          // Switch to Sign In so the next step is obvious.
+          _notify(
+            result.message ?? 'Check your email to confirm, then Sign In.',
+          );
           setState(() {
             _isLogin = true;
             _phoneOtpSent = false;
@@ -121,13 +121,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      // Error already on authState; reinforce with snackbar.
       final msg = ref.read(authProvider).error ?? e.toString();
       _notify(msg, isError: true);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
     }
   }
 
   Future<void> _verifyOtp() async {
+    if (_submitting) return;
     final phone = _normalizePhone(_phoneController.text);
     final otp = _otpController.text.trim();
     final authNotifier = ref.read(authProvider.notifier);
@@ -139,7 +141,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     }
 
     authNotifier.clearError();
-
+    setState(() => _submitting = true);
     try {
       await authNotifier.verifyPhone(phone: phone, otp: otp);
       if (!mounted) return;
@@ -150,10 +152,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       if (!mounted) return;
       final msg = ref.read(authProvider).error ?? e.toString();
       _notify(msg, isError: true);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
     }
   }
 
   Future<void> _handleLogin() async {
+    if (_submitting) return;
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     final authNotifier = ref.read(authProvider.notifier);
@@ -166,6 +171,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       return;
     }
 
+    setState(() => _submitting = true);
     try {
       await authNotifier.signIn(email: email, password: password);
       if (!mounted) return;
@@ -174,13 +180,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       if (!mounted) return;
       final msg = ref.read(authProvider).error ?? e.toString();
       _notify(msg, isError: true);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
-    final isLoading = authState.isLoading;
+    final busy = _submitting || authState.isLoading;
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -193,7 +201,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
             const Text(
               'Welcome to The Gathering',
               style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
@@ -210,15 +218,14 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             ),
             const SizedBox(height: 16),
             Material(
-              color: Theme.of(context).colorScheme.secondaryContainer.withValues(alpha: 0.45),
+              color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.45),
               borderRadius: BorderRadius.circular(8),
               child: const Padding(
                 padding: EdgeInsets.all(12),
                 child: Text(
-                  'Closed beta: each person needs their own email + password.\n'
-                  'On a shared computer, use Sign out (Profile tab) or a private/incognito window '
-                  'so you do not stay logged in as someone else.\n'
-                  'Phone is optional for now (SMS not required).',
+                  'Create your own account with email + password.\n'
+                  'Phone is optional. Check the attestation box before Create Account.\n'
+                  'Shared device? Sign out first (or use a private window).',
                   style: TextStyle(fontSize: 13, height: 1.35),
                   textAlign: TextAlign.center,
                 ),
@@ -226,37 +233,57 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             ),
             const SizedBox(height: 20),
 
-            SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(value: true, label: Text('Sign In')),
-                ButtonSegment(value: false, label: Text('Create Account')),
+            // Explicit mode buttons (more reliable than SegmentedButton on some web browsers)
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: busy
+                        ? null
+                        : () {
+                            setState(() {
+                              _isLogin = true;
+                              _phoneOtpSent = false;
+                            });
+                            ref.read(authProvider.notifier).clearError();
+                          },
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: _isLogin
+                          ? theme.colorScheme.primaryContainer
+                          : null,
+                    ),
+                    child: const Text('Sign In'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: busy
+                        ? null
+                        : () {
+                            setState(() {
+                              _isLogin = false;
+                              _phoneOtpSent = false;
+                            });
+                            ref.read(authProvider.notifier).clearError();
+                          },
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: !_isLogin
+                          ? theme.colorScheme.primaryContainer
+                          : null,
+                    ),
+                    child: const Text('Create Account'),
+                  ),
+                ),
               ],
-              selected: {_isLogin},
-              onSelectionChanged: isLoading
-                  ? null
-                  : (set) {
-                      setState(() {
-                        _isLogin = set.first;
-                        _phoneOtpSent = false;
-                        _otpController.clear();
-                      });
-                      ref.read(authProvider.notifier).clearError();
-                    },
             ),
             const SizedBox(height: 20),
 
-            // Always-visible status (more reliable than snackbars alone on web)
             if (authState.error != null) ...[
-              _StatusBanner(
-                message: authState.error!,
-                isError: true,
-              ),
+              _StatusBanner(message: authState.error!, isError: true),
               const SizedBox(height: 12),
             ] else if (authState.info != null) ...[
-              _StatusBanner(
-                message: authState.info!,
-                isError: false,
-              ),
+              _StatusBanner(message: authState.info!, isError: false),
               const SizedBox(height: 12),
             ],
 
@@ -270,7 +297,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   ),
                   keyboardType: TextInputType.emailAddress,
                   textInputAction: TextInputAction.next,
-                  enabled: !isLoading,
+                  enabled: !busy,
                   autofillHints: const [AutofillHints.email],
                 ),
                 const SizedBox(height: 16),
@@ -283,28 +310,32 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   ),
                   obscureText: true,
                   textInputAction: TextInputAction.next,
-                  enabled: !isLoading,
+                  enabled: !busy,
                   autofillHints: const [AutofillHints.newPassword],
                 ),
                 const SizedBox(height: 16),
                 TextField(
                   controller: _phoneController,
                   decoration: const InputDecoration(
-                    labelText: 'Phone (optional for beta)',
+                    labelText: 'Phone (optional)',
                     hintText: '+1 555 123 4567',
                     border: OutlineInputBorder(),
-                    helperText: 'Optional — SMS verification is not required right now',
+                    helperText: 'Leave blank for beta — SMS not required',
                   ),
                   keyboardType: TextInputType.phone,
-                  enabled: !isLoading,
-                  autofillHints: const [AutofillHints.telephoneNumber],
+                  enabled: !busy,
                 ),
                 const SizedBox(height: 20),
 
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    border: Border.all(color: theme.colorScheme.outline),
+                    border: Border.all(
+                      color: _affirmedAttestation
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.outline,
+                      width: _affirmedAttestation ? 2 : 1,
+                    ),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Column(
@@ -325,10 +356,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       const SizedBox(height: 12),
                       CheckboxListTile(
                         value: _affirmedAttestation,
-                        onChanged: isLoading
+                        onChanged: busy
                             ? null
                             : (val) {
-                                setState(() => _affirmedAttestation = val ?? false);
+                                setState(
+                                  () => _affirmedAttestation = val ?? false,
+                                );
                                 if (val == true) {
                                   ref.read(authProvider.notifier).clearError();
                                 }
@@ -342,34 +375,36 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Always wired — never silent-disabled when attestation unchecked.
                 FilledButton(
-                  onPressed: isLoading ? null : _handleSignup,
+                  onPressed: busy ? null : _handleSignup,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: isLoading
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    child: busy
                         ? const SizedBox(
                             height: 22,
                             width: 22,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Text(
-                            'Create Account & Send Verification Code',
-                            textAlign: TextAlign.center,
+                            'Create Account',
+                            style: TextStyle(fontSize: 16),
                           ),
                   ),
                 ),
-                if (!_affirmedAttestation) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'Tip: check the attestation box above, then tap Create Account.',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                    textAlign: TextAlign.center,
+                const SizedBox(height: 8),
+                Text(
+                  _affirmedAttestation
+                      ? 'Ready — tap Create Account above.'
+                      : '1) Check the attestation box  2) Tap Create Account',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: _affirmedAttestation
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.error,
+                    fontWeight: FontWeight.w600,
                   ),
-                ],
+                  textAlign: TextAlign.center,
+                ),
               ] else ...[
                 Text(
                   'We sent a code to ${_normalizePhone(_phoneController.text)}',
@@ -384,17 +419,14 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     border: OutlineInputBorder(),
                   ),
                   keyboardType: TextInputType.number,
-                  enabled: !isLoading,
-                  onSubmitted: (_) {
-                    if (!isLoading) _verifyOtp();
-                  },
+                  enabled: !busy,
                 ),
                 const SizedBox(height: 16),
                 FilledButton(
-                  onPressed: isLoading ? null : _verifyOtp,
+                  onPressed: busy ? null : _verifyOtp,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: isLoading
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    child: busy
                         ? const SizedBox(
                             height: 22,
                             width: 22,
@@ -403,16 +435,14 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                         : const Text('Verify Phone & Continue'),
                   ),
                 ),
-                const SizedBox(height: 8),
                 TextButton(
-                  onPressed: isLoading
+                  onPressed: busy
                       ? null
                       : () {
                           setState(() {
                             _phoneOtpSent = false;
                             _otpController.clear();
                           });
-                          ref.read(authProvider.notifier).clearError();
                         },
                   child: const Text('Back to account details'),
                 ),
@@ -425,8 +455,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   border: OutlineInputBorder(),
                 ),
                 keyboardType: TextInputType.emailAddress,
-                textInputAction: TextInputAction.next,
-                enabled: !isLoading,
+                enabled: !busy,
                 autofillHints: const [AutofillHints.email],
               ),
               const SizedBox(height: 16),
@@ -437,24 +466,23 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   border: OutlineInputBorder(),
                 ),
                 obscureText: true,
-                enabled: !isLoading,
-                autofillHints: const [AutofillHints.password],
+                enabled: !busy,
                 onSubmitted: (_) {
-                  if (!isLoading) _handleLogin();
+                  if (!busy) _handleLogin();
                 },
               ),
               const SizedBox(height: 24),
               FilledButton(
-                onPressed: isLoading ? null : _handleLogin,
+                onPressed: busy ? null : _handleLogin,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: isLoading
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  child: busy
                       ? const SizedBox(
                           height: 22,
                           width: 22,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Sign In'),
+                      : const Text('Sign In', style: TextStyle(fontSize: 16)),
                 ),
               ),
             ],
