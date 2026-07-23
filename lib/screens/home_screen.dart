@@ -43,6 +43,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // Default wider timeframe so beta seed events are visible without hunting.
   String _dateFilter = 'all_future';
   bool _freeOnly = false;
+  bool _recurringOnly = false;
   bool _isSeeding = false;
   /// True when list is filled from non-geo upcoming fallback.
   bool _showingAllUpcoming = false;
@@ -201,6 +202,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     if (_freeOnly) {
       list = list.where((e) => e.cost == null || e.cost == 0).toList();
+    }
+    if (_recurringOnly) {
+      list = list.where((e) => e.isRecurring).toList();
     }
     return list;
   }
@@ -448,6 +452,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     onSelected: (v) => setState(() => _freeOnly = v),
                   ),
                   const SizedBox(width: 6),
+                  FilterChip(
+                    label: const Text('Recurring'),
+                    selected: _recurringOnly,
+                    onSelected: (v) => setState(() => _recurringOnly = v),
+                  ),
+                  const SizedBox(width: 6),
                   ...InterestsService.grouped.keys.take(4).map((area) => Padding(
                     padding: const EdgeInsets.only(right: 6),
                     child: FilterChip(
@@ -463,7 +473,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
             const SizedBox(height: 4),
 
-            if (_searchQuery.isNotEmpty || _selectedFilter != null || _freeOnly)
+            if (_searchQuery.isNotEmpty ||
+                _selectedFilter != null ||
+                _freeOnly ||
+                _recurringOnly)
               Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
@@ -472,6 +485,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     setState(() {
                       _selectedFilter = null;
                       _freeOnly = false;
+                      _recurringOnly = false;
                     });
                     _loadEvents(reset: true);
                   },
@@ -576,16 +590,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 24),
                                 child: Text(
-                                  _searchQuery.isNotEmpty || _selectedFilter != null
-                                      ? 'No events match your search or filter. Try selecting "All" or clearing search.'
+                                  _searchQuery.isNotEmpty ||
+                                          _selectedFilter != null ||
+                                          _freeOnly ||
+                                          _recurringOnly
+                                      ? 'No events match your filters. Clear filters or widen the radius/timeframe.'
                                       : 'No activities nearby yet for ${_getFilterLabel().toLowerCase()}.\n\n'
-                                          'Load sample gatherings to explore the map, or create the first real one.',
+                                          'Load sample gatherings to explore, or host the first real one.',
                                   textAlign: TextAlign.center,
                                   style: Theme.of(context).textTheme.bodyLarge,
                                 ),
                               ),
                               const SizedBox(height: 20),
-                              if (_searchQuery.isEmpty && _selectedFilter == null) ...[
+                              if (_searchQuery.isEmpty &&
+                                  _selectedFilter == null &&
+                                  !_freeOnly &&
+                                  !_recurringOnly) ...[
                                 Center(
                                   child: FilledButton.icon(
                                     onPressed: _isSeeding ? null : _seedSamples,
@@ -603,10 +623,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                     ),
                                   ),
                                 ),
+                                const SizedBox(height: 10),
+                                Center(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => context.push('/create'),
+                                    icon: const Icon(Icons.add),
+                                    label: const Text('Host an activity'),
+                                  ),
+                                ),
                                 const SizedBox(height: 8),
                                 Center(
                                   child: Text(
-                                    'Creates ~10 wholesome demo events around your map pin (you are the host).',
+                                    'Samples create ~10 demo events around your map pin (you are the host).',
                                     textAlign: TextAlign.center,
                                     style: TextStyle(
                                       fontSize: 12,
@@ -659,9 +687,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                             child: Column(
                                               crossAxisAlignment: CrossAxisAlignment.start,
                                               children: [
-                                                Text(
-                                                  event.title,
-                                                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                                                Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: Text(
+                                                        event.title,
+                                                        style: const TextStyle(
+                                                          fontWeight: FontWeight.w600,
+                                                          fontSize: 15,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    if (event.cost == null || event.cost == 0)
+                                                      Padding(
+                                                        padding: const EdgeInsets.only(left: 4),
+                                                        child: Text(
+                                                          'FREE',
+                                                          style: TextStyle(
+                                                            fontSize: 10,
+                                                            fontWeight: FontWeight.bold,
+                                                            color: Theme.of(context).colorScheme.primary,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    if (event.isRecurring)
+                                                      const Padding(
+                                                        padding: EdgeInsets.only(left: 4),
+                                                        child: Icon(Icons.repeat, size: 14),
+                                                      ),
+                                                  ],
                                                 ),
                                                 const SizedBox(height: 4),
                                                 Text(

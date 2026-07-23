@@ -102,7 +102,24 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
     } catch (_) {}
   }
 
+  bool get _isFull {
+    final max = _event.maxAttendees;
+    if (max == null || max <= 0) return false;
+    // Allow host / already-going to keep or change status.
+    if (_currentRsvpStatus == 'going') return false;
+    return _goingCount() >= max;
+  }
+
   Future<void> _updateRsvp(String status) async {
+    if (status == 'going' && _isFull) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This activity is full. Try Maybe or pick another gathering.'),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isUpdatingRsvp = true);
     try {
       await EventsService.rsvpToEvent(
@@ -113,12 +130,12 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
       await _loadAttendees();
       if (mounted) {
         final label = {
-          'going': 'Going',
-          'maybe': 'Maybe',
-          'no': 'Not going',
+          'going': "You're going — see you there!",
+          'maybe': "Marked as maybe.",
+          'no': "RSVP cleared (not going).",
         }[status]!;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('RSVP: $label')),
+          SnackBar(content: Text(label)),
         );
       }
     } catch (e) {
@@ -425,9 +442,26 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    event.title,
-                    style: theme.textTheme.headlineSmall,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          event.title,
+                          style: theme.textTheme.headlineSmall,
+                        ),
+                      ),
+                      if (_isFull)
+                        Chip(
+                          label: const Text('FULL'),
+                          backgroundColor: theme.colorScheme.errorContainer,
+                          labelStyle: TextStyle(
+                            color: theme.colorScheme.onErrorContainer,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   Row(
@@ -557,28 +591,40 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
           const SizedBox(height: 24),
           Text('Your response', style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
-          if (SupabaseService.currentUser != null)
+          if (SupabaseService.currentUser != null) ...[
+            if (_isFull && _currentRsvpStatus != 'going')
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'This activity is at capacity. You can still mark Maybe.',
+                  style: TextStyle(
+                    color: theme.colorScheme.error,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
             Wrap(
               spacing: 8,
               children: ['going', 'maybe', 'no'].map((status) {
                 final isSelected = _currentRsvpStatus == status;
                 final label = {
-                  'going': 'Going',
+                  'going': _isFull && !isSelected ? 'Going (full)' : 'Going',
                   'maybe': 'Maybe',
                   'no': 'Not going',
                 }[status]!;
+                final disableGoing = status == 'going' && _isFull && !isSelected;
                 return ChoiceChip(
                   label: Text(label),
                   selected: isSelected,
-                  onSelected: _isUpdatingRsvp
+                  onSelected: (_isUpdatingRsvp || disableGoing)
                       ? null
                       : (selected) {
                           if (selected) _updateRsvp(status);
                         },
                 );
               }).toList(),
-            )
-          else
+            ),
+          ] else
             const Text('Sign in to RSVP'),
 
           const SizedBox(height: 32),
