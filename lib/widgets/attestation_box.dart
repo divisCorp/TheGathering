@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:the_gathering/services/auth_service.dart';
 
-/// Reusable attestation widget for future screens.
+/// Reusable attestation / standards agreement checkbox.
 class AttestationBox extends StatelessWidget {
   final bool value;
   final ValueChanged<bool?> onChanged;
@@ -20,20 +20,15 @@ class AttestationBox extends StatelessWidget {
         border: Border.all(color: Theme.of(context).colorScheme.outline),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Membership Attestation (Required)', style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Text(AuthService.attestationText, style: const TextStyle(fontSize: 13)),
-          CheckboxListTile(
-            value: value,
-            onChanged: onChanged,
-            title: const Text('I affirm the above statement'),
-            controlAffinity: ListTileControlAffinity.leading,
-            contentPadding: EdgeInsets.zero,
-          ),
-        ],
+      child: CheckboxListTile(
+        value: value,
+        onChanged: onChanged,
+        title: Text(
+          AuthService.attestationText,
+          style: const TextStyle(fontSize: 14),
+        ),
+        controlAffinity: ListTileControlAffinity.leading,
+        contentPadding: EdgeInsets.zero,
       ),
     );
   }

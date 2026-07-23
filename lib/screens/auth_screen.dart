@@ -80,7 +80,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     }
     if (!_affirmedAttestation) {
       const msg =
-          'Check the membership attestation box, then tap Create Account again.';
+          'Check the agreement box, then tap Create Account again.';
       authNotifier.setError(msg);
       _notify(msg, isError: true);
       return;
@@ -224,7 +224,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 padding: EdgeInsets.all(12),
                 child: Text(
                   'Create your own account with email + password.\n'
-                  'Phone is optional. Check the attestation box before Create Account.\n'
+                  'Phone is optional. Check the standards agreement before Create Account.\n'
                   'Shared device? Sign out first (or use a private window).',
                   style: TextStyle(fontSize: 13, height: 1.35),
                   textAlign: TextAlign.center,
@@ -342,18 +342,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Membership Attestation (Required)',
+                        'Agreement (Required)',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        AuthService.attestationText,
-                        style: const TextStyle(fontSize: 13),
-                      ),
-                      const SizedBox(height: 12),
                       CheckboxListTile(
                         value: _affirmedAttestation,
                         onChanged: busy
@@ -366,7 +361,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                   ref.read(authProvider.notifier).clearError();
                                 }
                               },
-                        title: const Text('I affirm the above statement'),
+                        title: Text(
+                          AuthService.attestationText,
+                          style: const TextStyle(fontSize: 14),
+                        ),
                         controlAffinity: ListTileControlAffinity.leading,
                         contentPadding: EdgeInsets.zero,
                       ),
@@ -395,7 +393,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 Text(
                   _affirmedAttestation
                       ? 'Ready — tap Create Account above.'
-                      : '1) Check the attestation box  2) Tap Create Account',
+                      : '1) Check the agreement  2) Tap Create Account',
                   style: TextStyle(
                     fontSize: 13,
                     color: _affirmedAttestation

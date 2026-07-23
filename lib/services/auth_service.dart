@@ -33,7 +33,7 @@ class SignUpResult {
 /// - Verification queue flag for backend (see PR7+ for full implementation)
 class AuthService {
   static const String _attestationText =
-      'I affirm under penalty of community removal that I am a current, active or believing member of The Church of Jesus Christ of Latter-day Saints in good standing and will abide by all app standards and terms; false claims will result in permanent ban and may be reported.';
+      'I will abide by all app standards and terms.';
 
   /// Returns the required attestation text for UI display.
   static String get attestationText => _attestationText;
