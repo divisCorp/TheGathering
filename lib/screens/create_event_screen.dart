@@ -37,6 +37,10 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
   String _locationPrivacy = 'post_rsvp';
   bool _isRecurring = false;
   int? _maxAttendees;
+  /// Default 2 hours; used to set end_time on create/update.
+  int _durationHours = 2;
+  bool _isFree = true;
+  final _costController = TextEditingController();
 
   double? _eventLat;
   double? _eventLon;
@@ -72,6 +76,17 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
     super.initState();
     if (_isEditing) {
       _prefillFrom(widget.event!, shiftWeek: false);
+      final e = widget.event!;
+      if (e.endTime != null) {
+        final hours = e.endTime!.difference(e.startTime).inHours;
+        if (hours >= 1 && hours <= 8) _durationHours = hours;
+      }
+      if (e.cost != null && e.cost! > 0) {
+        _isFree = false;
+        _costController.text = e.cost!.toStringAsFixed(
+          e.cost! == e.cost!.roundToDouble() ? 0 : 2,
+        );
+      }
     } else if (widget.duplicateFrom != null) {
       _prefillFrom(widget.duplicateFrom!, shiftWeek: true);
       if (widget.duplicateFrom!.lat == null) {
@@ -81,6 +96,16 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
       // Auto-pin map location so new events show up in Discover nearby.
       _useCurrentLocation(silent: true);
     }
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descController.dispose();
+    _addressController.dispose();
+    _recurrenceController.dispose();
+    _costController.dispose();
+    super.dispose();
   }
 
   final List<String> _templates = [
@@ -236,12 +261,18 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
       final title = _titleController.text.trim();
       final description = _descController.text.trim().isEmpty ? null : _descController.text.trim();
 
+      final endTime = _startTime.add(Duration(hours: _durationHours));
+      final cost = _isFree
+          ? null
+          : double.tryParse(_costController.text.trim().replaceAll('\$', ''));
+
       if (_isEditing) {
         await EventsService.updateEvent(
           eventId: widget.event!.id,
           title: title,
           description: description,
           startTime: _startTime,
+          endTime: endTime,
           address: _addressController.text.trim().isEmpty ? null : _addressController.text.trim(),
           lat: _eventLat,
           lon: _eventLon,
@@ -251,12 +282,14 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
           isRecurring: _isRecurring,
           recurrenceNote: _isRecurring ? _recurrenceController.text.trim() : null,
           maxAttendees: _maxAttendees,
+          cost: cost,
         );
       } else {
         await EventsService.createEvent(
           title: title,
           description: description,
           startTime: _startTime,
+          endTime: endTime,
           address: _addressController.text.trim().isEmpty ? null : _addressController.text.trim(),
           lat: _eventLat,
           lon: _eventLon,
@@ -266,6 +299,7 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
           isRecurring: _isRecurring,
           recurrenceNote: _isRecurring ? _recurrenceController.text.trim() : null,
           maxAttendees: _maxAttendees,
+          cost: cost,
         );
       }
 
@@ -518,6 +552,41 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
                 });
               },
             ),
+            const SizedBox(height: 4),
+            const Text('Duration', style: TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              children: [1, 2, 3, 4].map((h) {
+                return ChoiceChip(
+                  label: Text(h == 1 ? '1 hour' : '$h hours'),
+                  selected: _durationHours == h,
+                  onSelected: (_) => setState(() => _durationHours = h),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 12),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Free activity'),
+              subtitle: Text(
+                _isFree
+                    ? 'Shows as FREE in Discover'
+                    : 'Add a cost note (e.g. materials fee)',
+              ),
+              value: _isFree,
+              onChanged: (v) => setState(() => _isFree = v),
+            ),
+            if (!_isFree)
+              TextFormField(
+                controller: _costController,
+                decoration: const InputDecoration(
+                  labelText: 'Cost amount (USD)',
+                  border: OutlineInputBorder(),
+                  prefixText: '\$ ',
+                ),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              ),
 
             // Location tiers
             const SizedBox(height: 8),
