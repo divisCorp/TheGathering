@@ -144,6 +144,31 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
     );
   }
 
+  Future<void> _copyAttendeeList() async {
+    if (_attendees.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No attendees yet.')),
+      );
+      return;
+    }
+    final buf = StringBuffer()
+      ..writeln('Attendees for ${_event.title}')
+      ..writeln();
+    for (final rsvp in _attendees) {
+      final profile = rsvp['profiles'] as Map<String, dynamic>? ?? {};
+      final name = profile['display_name'] as String? ?? 'Member';
+      final status = rsvp['status'] as String? ?? '';
+      buf.writeln('• $name ($status)');
+    }
+    buf.writeln();
+    buf.writeln('Going: ${_goingCount()} · Total listed: ${_attendees.length}');
+    await Clipboard.setData(ClipboardData(text: buf.toString()));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Attendee list copied.')),
+    );
+  }
+
   Future<void> _addToCalendar() async {
     final action = await showModalBottomSheet<String>(
       context: context,
@@ -358,6 +383,7 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
           PopupMenuButton<String>(
             onSelected: (v) {
               if (v == 'share') _shareInvite();
+              if (v == 'attendees') _copyAttendeeList();
               if (v == 'report') _reportEvent();
               if (v == 'edit') _editEvent();
               if (v == 'duplicate') {
@@ -368,6 +394,10 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
             itemBuilder: (ctx) => [
               const PopupMenuItem(value: 'share', child: Text('Copy invite text')),
               if (_isHost) ...[
+                const PopupMenuItem(
+                  value: 'attendees',
+                  child: Text('Copy attendee list'),
+                ),
                 const PopupMenuItem(value: 'edit', child: Text('Edit activity')),
                 const PopupMenuItem(
                   value: 'duplicate',
@@ -552,9 +582,21 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
             const Text('Sign in to RSVP'),
 
           const SizedBox(height: 32),
-          Text(
-            'Attendees (${_attendees.length})',
-            style: theme.textTheme.titleMedium,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Attendees (${_attendees.length})',
+                  style: theme.textTheme.titleMedium,
+                ),
+              ),
+              if (_isHost && _attendees.isNotEmpty)
+                TextButton.icon(
+                  onPressed: _copyAttendeeList,
+                  icon: const Icon(Icons.copy, size: 16),
+                  label: const Text('Copy list'),
+                ),
+            ],
           ),
           const SizedBox(height: 8),
           if (_isLoadingAttendees)

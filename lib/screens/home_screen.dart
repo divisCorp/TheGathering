@@ -42,6 +42,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   double _radiusMiles = 25.0;
   // Default wider timeframe so beta seed events are visible without hunting.
   String _dateFilter = 'all_future';
+  bool _freeOnly = false;
   bool _isSeeding = false;
   /// True when list is filled from non-geo upcoming fallback.
   bool _showingAllUpcoming = false;
@@ -194,8 +195,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   List<GatheringEvent> get _filteredEvents {
-    if (_selectedFilter == null) return _events;
-    return _events.where((e) => e.tags.contains(_selectedFilter)).toList();
+    var list = _events;
+    if (_selectedFilter != null) {
+      list = list.where((e) => e.tags.contains(_selectedFilter)).toList();
+    }
+    if (_freeOnly) {
+      list = list.where((e) => e.cost == null || e.cost == 0).toList();
+    }
+    return list;
   }
 
   String _distanceText(GatheringEvent e) {
@@ -209,6 +216,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   DateTime? _getStartDate() {
     final now = DateTime.now();
     switch (_dateFilter) {
+      case 'today':
+        return DateTime(now.year, now.month, now.day);
       case 'this_week':
         // Start of this week (Monday), but not before today
         final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
@@ -228,6 +237,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   DateTime? _getEndDate() {
     final now = DateTime.now();
     switch (_dateFilter) {
+      case 'today':
+        return DateTime(now.year, now.month, now.day, 23, 59, 59);
       case 'this_week':
         // End of this week (Sunday)
         final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
@@ -245,6 +256,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   String _getFilterLabel() {
     switch (_dateFilter) {
+      case 'today':
+        return 'Today';
       case 'this_week':
         return 'This week';
       case 'this_month':
@@ -403,6 +416,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
               items: const [
+                DropdownMenuItem(value: 'today', child: Text('Today')),
                 DropdownMenuItem(value: 'this_week', child: Text('This week')),
                 DropdownMenuItem(value: 'this_month', child: Text('This month')),
                 DropdownMenuItem(value: 'next_3_months', child: Text('Next 3 months')),
@@ -415,11 +429,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 }
               },
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Tip: Events appear if their location is within radius of app\'s location and start time in timeframe. Use simulator location to match.',
-              style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
-            ),
             const SizedBox(height: 8),
 
             // Basic filter chips (PR4 direction)
@@ -427,12 +436,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  const Text('Filter: ', style: TextStyle(fontWeight: FontWeight.w500)),
                   FilterChip(
-                    label: const Text('All'),
+                    label: const Text('All tags'),
                     selected: _selectedFilter == null,
                     onSelected: (_) => setState(() => _selectedFilter = null),
                   ),
+                  const SizedBox(width: 6),
+                  FilterChip(
+                    label: const Text('Free only'),
+                    selected: _freeOnly,
+                    onSelected: (v) => setState(() => _freeOnly = v),
+                  ),
+                  const SizedBox(width: 6),
                   ...InterestsService.grouped.keys.take(4).map((area) => Padding(
                     padding: const EdgeInsets.only(right: 6),
                     child: FilterChip(
@@ -448,13 +463,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
             const SizedBox(height: 4),
 
-            if (_searchQuery.isNotEmpty || _selectedFilter != null)
+            if (_searchQuery.isNotEmpty || _selectedFilter != null || _freeOnly)
               Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
                   onPressed: () {
                     _searchController.clear();
-                    setState(() => _selectedFilter = null);
+                    setState(() {
+                      _selectedFilter = null;
+                      _freeOnly = false;
+                    });
                     _loadEvents(reset: true);
                   },
                   icon: const Icon(Icons.clear, size: 16),
