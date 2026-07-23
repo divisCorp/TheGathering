@@ -243,6 +243,30 @@ class EventsService {
     final user = SupabaseService.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
+    if (status == 'going') {
+      // Soft capacity check (UI also guards; this covers other clients).
+      final eventRow = await _client
+          .from('events')
+          .select('max_attendees')
+          .eq('id', eventId)
+          .maybeSingle();
+      final max = eventRow?['max_attendees'] as int?;
+      if (max != null && max > 0) {
+        final existing = await _client
+            .from('rsvps')
+            .select('user_id, status')
+            .eq('event_id', eventId)
+            .eq('status', 'going');
+        final going = List<Map<String, dynamic>>.from(existing);
+        final alreadyGoing = going.any((r) => r['user_id'] == user.id);
+        if (!alreadyGoing && going.length >= max) {
+          throw Exception(
+            'This activity is full. Try Maybe or choose another gathering.',
+          );
+        }
+      }
+    }
+
     await _client.from('rsvps').upsert(
       {
         'user_id': user.id,

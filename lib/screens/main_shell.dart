@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:the_gathering/providers/app_ui_provider.dart';
 import 'package:the_gathering/providers/auth_provider.dart';
 import 'package:the_gathering/screens/create_event_screen.dart';
 import 'package:the_gathering/screens/home_screen.dart';
@@ -58,11 +59,26 @@ class _MainShellState extends ConsumerState<MainShell> {
     context.go('/auth');
   }
 
+  void _onTab(int index) {
+    setState(() => _currentIndex = index);
+    // Returning to Discover should pick up new events/RSVPs.
+    if (index == 0) {
+      ref.read(discoverRefreshTickProvider.notifier).state++;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final email = ref.watch(authProvider).user?.email;
 
     return Scaffold(
+      floatingActionButton: _currentIndex == 1
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () => context.push('/create'),
+              icon: const Icon(Icons.add),
+              label: const Text('Host'),
+            ),
       body: Column(
         children: [
           if (email != null && email.isNotEmpty)
@@ -95,7 +111,13 @@ class _MainShellState extends ConsumerState<MainShell> {
                 ),
               ),
             ),
-          Expanded(child: _pages[_currentIndex]),
+          Expanded(
+            // Keep tab state alive so map/filters don't reset constantly.
+            child: IndexedStack(
+              index: _currentIndex,
+              children: _pages,
+            ),
+          ),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -104,7 +126,7 @@ class _MainShellState extends ConsumerState<MainShell> {
         backgroundColor: Theme.of(context).colorScheme.surface,
         selectedItemColor: Theme.of(context).colorScheme.primary,
         unselectedItemColor: Theme.of(context).colorScheme.onSurfaceVariant,
-        onTap: (index) => setState(() => _currentIndex = index),
+        onTap: _onTab,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.explore), label: 'Discover'),
           BottomNavigationBarItem(

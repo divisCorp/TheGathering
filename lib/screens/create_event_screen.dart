@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:the_gathering/models/event.dart';
+import 'package:the_gathering/providers/app_ui_provider.dart';
 import 'package:the_gathering/services/events_service.dart';
 import 'package:the_gathering/services/interests_service.dart';
 
 /// Event Creation Wizard.
 /// Supports templates, tags, tiers, standards, recurring notes, location (now with current GPS capture).
-class CreateEventScreen extends StatefulWidget {
+class CreateEventScreen extends ConsumerStatefulWidget {
   /// If provided, we are editing an existing event.
   final GatheringEvent? event;
 
@@ -18,10 +20,10 @@ class CreateEventScreen extends StatefulWidget {
   const CreateEventScreen({super.key, this.event, this.duplicateFrom});
 
   @override
-  State<CreateEventScreen> createState() => _CreateEventScreenState();
+  ConsumerState<CreateEventScreen> createState() => _CreateEventScreenState();
 }
 
-class _CreateEventScreenState extends State<CreateEventScreen> {
+class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descController = TextEditingController();
@@ -275,6 +277,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
           _justPublished = true;
           _lastPublishedTitle = publishedTitle;
         });
+        // Nudge Discover to reload when user returns to that tab.
+        ref.read(discoverRefreshTickProvider.notifier).state++;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Event $action successfully!')),
         );

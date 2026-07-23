@@ -502,7 +502,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               child: const Text('Privacy & standards'),
             ),
             Text(
-              'Beta v0.1.9',
+              'Beta v0.2.0',
               style: TextStyle(
                 fontSize: 10,
                 color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),

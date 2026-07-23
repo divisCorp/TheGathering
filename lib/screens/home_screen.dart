@@ -10,6 +10,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:the_gathering/models/event.dart';
+import 'package:the_gathering/providers/app_ui_provider.dart';
 import 'package:the_gathering/providers/current_profile_provider.dart';
 import 'package:the_gathering/services/events_service.dart';
 import 'package:the_gathering/services/interests_service.dart';
@@ -344,6 +345,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Reload when shell asks (e.g. user switched back to Discover tab).
+    ref.listen<int>(discoverRefreshTickProvider, (prev, next) {
+      if (prev != next) _loadEvents(reset: true);
+    });
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('The Gathering'),

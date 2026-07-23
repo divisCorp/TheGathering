@@ -590,7 +590,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Beta v0.1.9',
+                    'Beta v0.2.0',
                     style: TextStyle(
                       fontSize: 11,
                       color: theme.colorScheme.onSurfaceVariant,
