@@ -18,6 +18,7 @@ class _MyActivitiesScreenState extends State<MyActivitiesScreen> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _myRsvps = [];
   List<GatheringEvent> _myHostedEvents = [];
+  List<GatheringEvent> _myPastHosted = [];
   Map<String, ({int going, int maybe})> _rsvpCounts = {};
 
   @override
@@ -30,7 +31,8 @@ class _MyActivitiesScreenState extends State<MyActivitiesScreen> {
     setState(() => _isLoading = true);
     try {
       final rsvps = await EventsService.fetchMyRsvps();
-      final hosted = await EventsService.fetchMyEvents();
+      final hosted = await EventsService.fetchMyEvents(upcomingOnly: true);
+      final past = await EventsService.fetchMyPastHostedEvents();
       final counts = await EventsService.fetchRsvpCounts(
         hosted.map((e) => e.id).toList(),
       );
@@ -47,6 +49,7 @@ class _MyActivitiesScreenState extends State<MyActivitiesScreen> {
         setState(() {
           _myRsvps = activeRsvps;
           _myHostedEvents = hosted;
+          _myPastHosted = past;
           _rsvpCounts = counts;
           _isLoading = false;
         });
@@ -263,6 +266,46 @@ class _MyActivitiesScreenState extends State<MyActivitiesScreen> {
                   ),
                 );
               }),
+
+            if (_myPastHosted.isNotEmpty) ...[
+              const SizedBox(height: 28),
+              Text(
+                'Past hosted',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ..._myPastHosted.map((e) {
+                final timeStr =
+                    DateFormat('MMM d · h:mm a').format(e.startTime);
+                return Card(
+                  margin: const EdgeInsets.symmetric(vertical: 4),
+                  child: ListTile(
+                    leading: const Icon(Icons.history),
+                    title: Text(e.title),
+                    subtitle: Text(timeStr),
+                    trailing: PopupMenuButton<String>(
+                      onSelected: (v) {
+                        if (v == 'duplicate') {
+                          context.push('/create', extra: e);
+                        } else if (v == 'open') {
+                          context.push('/event', extra: e);
+                        }
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'open', child: Text('Open')),
+                        PopupMenuItem(
+                          value: 'duplicate',
+                          child: Text('Duplicate next week'),
+                        ),
+                      ],
+                    ),
+                    onTap: () => context.push('/event', extra: e),
+                  ),
+                );
+              }),
+            ],
 
             const SizedBox(height: 28),
             Text(

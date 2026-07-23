@@ -40,6 +40,28 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
     return uid != null && uid == _event.hostId;
   }
 
+  int _goingCount() {
+    return _attendees.where((a) => a['status'] == 'going').length;
+  }
+
+  String _relativeWhen(DateTime start) {
+    final now = DateTime.now();
+    final local = start.toLocal();
+    final diff = local.difference(now);
+    if (diff.isNegative) {
+      final ago = now.difference(local);
+      if (ago.inDays >= 1) return 'Started ${ago.inDays}d ago';
+      if (ago.inHours >= 1) return 'Started ${ago.inHours}h ago';
+      return 'Started recently';
+    }
+    if (diff.inDays >= 14) return 'In ${diff.inDays} days';
+    if (diff.inDays >= 2) return 'In ${diff.inDays} days';
+    if (diff.inDays == 1) return 'Tomorrow';
+    if (diff.inHours >= 1) return 'In ${diff.inHours} hours';
+    if (diff.inMinutes >= 1) return 'In ${diff.inMinutes} minutes';
+    return 'Starting soon';
+  }
+
   Future<void> _loadAttendees() async {
     setState(() => _isLoadingAttendees = true);
     try {
@@ -383,12 +405,25 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
                       Icon(Icons.schedule, size: 18, color: theme.colorScheme.primary),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Text(
-                          DateFormat('EEE, MMM d • h:mm a').format(event.startTime) +
-                              (event.endTime != null
-                                  ? ' – ${DateFormat('h:mm a').format(event.endTime!)}'
-                                  : ''),
-                          style: theme.textTheme.bodyLarge,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              DateFormat('EEE, MMM d • h:mm a').format(event.startTime) +
+                                  (event.endTime != null
+                                      ? ' – ${DateFormat('h:mm a').format(event.endTime!)}'
+                                      : ''),
+                              style: theme.textTheme.bodyLarge,
+                            ),
+                            Text(
+                              _relativeWhen(event.startTime),
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: theme.colorScheme.primary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -433,8 +468,21 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
                     Text('Cost note: \$${event.cost}'),
                   ],
                   if (event.maxAttendees != null) ...[
-                    const SizedBox(height: 4),
-                    Text('Capacity: ${event.maxAttendees}'),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Capacity: ${_goingCount()}/${event.maxAttendees}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: (event.maxAttendees! <= 0)
+                            ? 0
+                            : (_goingCount() / event.maxAttendees!).clamp(0.0, 1.0),
+                        minHeight: 8,
+                      ),
+                    ),
                   ],
                 ],
               ),

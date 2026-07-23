@@ -184,7 +184,29 @@ class EventsService {
   }
 
   /// Get events hosted by current user.
-  static Future<List<GatheringEvent>> fetchMyEvents() async {
+  static Future<List<GatheringEvent>> fetchMyEvents({
+    bool upcomingOnly = true,
+  }) async {
+    final user = SupabaseService.currentUser;
+    if (user == null) return [];
+    var query = _client
+        .from('events')
+        .select()
+        .eq('host_id', user.id)
+        .eq('status', 'active');
+
+    if (upcomingOnly) {
+      query = query.gte('start_time', DateTime.now().toIso8601String());
+    }
+
+    final response = await query.order('start_time', ascending: true);
+    return response.map<GatheringEvent>((json) => _fromJson(json)).toList();
+  }
+
+  /// Past active hosted events (start_time in the past).
+  static Future<List<GatheringEvent>> fetchMyPastHostedEvents({
+    int limit = 20,
+  }) async {
     final user = SupabaseService.currentUser;
     if (user == null) return [];
     final response = await _client
@@ -192,7 +214,9 @@ class EventsService {
         .select()
         .eq('host_id', user.id)
         .eq('status', 'active')
-        .order('start_time', ascending: true);
+        .lt('start_time', DateTime.now().toIso8601String())
+        .order('start_time', ascending: false)
+        .limit(limit);
     return response.map<GatheringEvent>((json) => _fromJson(json)).toList();
   }
 

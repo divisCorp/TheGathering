@@ -195,6 +195,38 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       );
       return;
     }
+    if (_selectedTags.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Pick at least one tag (e.g. Social, Spiritual, Physical).'),
+        ),
+      );
+      return;
+    }
+    if (_eventLat == null || _eventLon == null) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('No map pin'),
+          content: const Text(
+            'Without a location pin, this activity may not show on the Discover map. '
+            'You can still publish with an address only.\n\n'
+            'Tip: tap “Use current location” first.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Go back'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Publish anyway'),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true) return;
+    }
 
     setState(() => _isPublishing = true);
 

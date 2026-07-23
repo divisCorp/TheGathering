@@ -10,6 +10,7 @@ import 'package:the_gathering/providers/current_profile_provider.dart';
 import 'package:the_gathering/services/interests_service.dart';
 import 'package:the_gathering/services/profiles_service.dart';
 import 'package:the_gathering/services/supabase_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// My Profile screen + edit flow (PR2).
 /// Web-safe avatar preview (no dart:io).
@@ -527,6 +528,42 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       fontSize: 12,
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
+                  ),
+                  const SizedBox(height: 12),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.feedback_outlined),
+                    title: const Text('Send beta feedback'),
+                    subtitle: const Text('Email the builder with bugs or ideas'),
+                    trailing: const Icon(Icons.open_in_new, size: 18),
+                    onTap: () async {
+                      final email = Uri(
+                        scheme: 'mailto',
+                        path: 'divisj@gmail.com',
+                        queryParameters: {
+                          'subject': 'The Gathering beta feedback',
+                          'body':
+                              'What I tried:\n\nWhat happened:\n\nDevice/browser:\n',
+                        },
+                      );
+                      final ok = await canLaunchUrl(email);
+                      if (ok) {
+                        await launchUrl(email);
+                      } else if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Email: divisj@gmail.com'),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.gavel_outlined),
+                    title: const Text('Privacy & standards'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => context.push('/terms'),
                   ),
                   const SizedBox(height: 20),
                   OutlinedButton.icon(
