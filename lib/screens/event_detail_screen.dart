@@ -196,13 +196,23 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.event_available),
-              title: const Text('Open in Google Calendar'),
+              title: const Text('Google Calendar'),
               onTap: () => Navigator.pop(ctx, 'google'),
             ),
             ListTile(
+              leading: const Icon(Icons.mail_outline),
+              title: const Text('Outlook Calendar'),
+              onTap: () => Navigator.pop(ctx, 'outlook'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.download_outlined),
+              title: const Text('Open ICS file'),
+              subtitle: const Text('Works in many browsers / Apple Calendar'),
+              onTap: () => Navigator.pop(ctx, 'ics_open'),
+            ),
+            ListTile(
               leading: const Icon(Icons.copy_all),
-              title: const Text('Copy calendar file (ICS)'),
-              subtitle: const Text('Paste into Apple Calendar, Outlook, etc.'),
+              title: const Text('Copy ICS text'),
               onTap: () => Navigator.pop(ctx, 'ics'),
             ),
           ],
@@ -220,13 +230,32 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
           const SnackBar(content: Text('Could not open Google Calendar.')),
         );
       }
+    } else if (action == 'outlook') {
+      final ok = await CalendarService.openOutlookCalendar(_event);
+      if (!mounted) return;
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open Outlook Calendar.')),
+        );
+      }
+    } else if (action == 'ics_open') {
+      final ok = await CalendarService.openIcsDataUri(_event);
+      if (!mounted) return;
+      if (!ok) {
+        final ics = CalendarService.toIcs(_event);
+        await Clipboard.setData(ClipboardData(text: ics));
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open ICS — copied text instead.')),
+        );
+      }
     } else if (action == 'ics') {
       final ics = CalendarService.toIcs(_event);
       await Clipboard.setData(ClipboardData(text: ics));
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('ICS copied. Create a .ics file or import into your calendar app.'),
+          content: Text('ICS copied. Import into your calendar app.'),
           duration: Duration(seconds: 5),
         ),
       );

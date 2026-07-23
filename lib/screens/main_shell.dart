@@ -61,9 +61,11 @@ class _MainShellState extends ConsumerState<MainShell> {
 
   void _onTab(int index) {
     setState(() => _currentIndex = index);
-    // Returning to Discover should pick up new events/RSVPs.
+    // Returning to a tab should pick up fresh data.
     if (index == 0) {
       ref.read(discoverRefreshTickProvider.notifier).state++;
+    } else if (index == 2) {
+      ref.read(activitiesRefreshTickProvider.notifier).state++;
     }
   }
 

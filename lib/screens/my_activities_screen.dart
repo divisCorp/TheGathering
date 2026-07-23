@@ -1,20 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:the_gathering/models/event.dart';
+import 'package:the_gathering/providers/app_ui_provider.dart';
 import 'package:the_gathering/screens/create_event_screen.dart';
 import 'package:the_gathering/services/events_service.dart';
 
 /// My Activities: hosted events with RSVP counts + personal RSVPs.
-class MyActivitiesScreen extends StatefulWidget {
+class MyActivitiesScreen extends ConsumerStatefulWidget {
   const MyActivitiesScreen({super.key});
 
   @override
-  State<MyActivitiesScreen> createState() => _MyActivitiesScreenState();
+  ConsumerState<MyActivitiesScreen> createState() => _MyActivitiesScreenState();
 }
 
-class _MyActivitiesScreenState extends State<MyActivitiesScreen> {
+class _MyActivitiesScreenState extends ConsumerState<MyActivitiesScreen> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _myRsvps = [];
   List<GatheringEvent> _myHostedEvents = [];
@@ -88,6 +90,10 @@ class _MyActivitiesScreenState extends State<MyActivitiesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(activitiesRefreshTickProvider, (prev, next) {
+      if (prev != next) _loadData();
+    });
+
     final theme = Theme.of(context);
 
     if (_isLoading) {
