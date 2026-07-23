@@ -588,43 +588,62 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
 
-            // Location tiers
-            const SizedBox(height: 8),
+            // Location section
+            const SizedBox(height: 20),
+            const Text(
+              'Location',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               initialValue: _locationType,
-              decoration: const InputDecoration(labelText: 'Location Type'),
-              items: _locationTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+              decoration: const InputDecoration(
+                labelText: 'Location type',
+                border: OutlineInputBorder(),
+              ),
+              items: _locationTypes
+                  .map((t) => DropdownMenuItem(value: t, child: Text(t)))
+                  .toList(),
               onChanged: (v) => setState(() => _locationType = v!),
             ),
+            const SizedBox(height: 16),
             DropdownButtonFormField<String>(
               initialValue: _locationPrivacy,
-              decoration: const InputDecoration(labelText: 'Privacy Level'),
-              items: _privacyOptions.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
+              decoration: const InputDecoration(
+                labelText: 'Privacy level',
+                border: OutlineInputBorder(),
+              ),
+              items: _privacyOptions
+                  .map((p) => DropdownMenuItem(value: p, child: Text(p)))
+                  .toList(),
               onChanged: (v) => setState(() => _locationPrivacy = v!),
             ),
+            const SizedBox(height: 16),
             TextFormField(
               controller: _addressController,
-              decoration: const InputDecoration(labelText: 'Address or description'),
+              decoration: const InputDecoration(
+                labelText: 'Address or description',
+                border: OutlineInputBorder(),
+                alignLabelWithHint: true,
+              ),
+              maxLines: 2,
             ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                OutlinedButton.icon(
-                  onPressed: _useCurrentLocation,
-                  icon: const Icon(Icons.my_location, size: 18),
-                  label: const Text('Use my current location'),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: _useCurrentLocation,
+              icon: const Icon(Icons.my_location, size: 18),
+              label: const Text('Use my current location'),
+            ),
+            if (_eventLat != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                'Map pin: ${_eventLat!.toStringAsFixed(4)}, ${_eventLon!.toStringAsFixed(4)}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
-                const SizedBox(width: 12),
-                if (_eventLat != null)
-                  Expanded(
-                    child: Text(
-                      '📍 ${_eventLat!.toStringAsFixed(3)}, ${_eventLon!.toStringAsFixed(3)}',
-                      style: const TextStyle(fontSize: 12),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-              ],
-            ),
+              ),
+            ],
 
             const SizedBox(height: 16),
 
