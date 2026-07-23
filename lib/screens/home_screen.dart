@@ -10,6 +10,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:the_gathering/models/event.dart';
+import 'package:the_gathering/providers/current_profile_provider.dart';
 import 'package:the_gathering/services/events_service.dart';
 import 'package:the_gathering/services/interests_service.dart';
 import 'package:the_gathering/services/seed_service.dart';
@@ -250,12 +251,45 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
+  Widget? _profileNudge(BuildContext context) {
+    final profileAsync = ref.watch(currentProfileProvider);
+    final profile = profileAsync.valueOrNull;
+    if (profile == null) return null;
+    final missing = <String>[];
+    if (profile.displayName.isEmpty || profile.displayName == 'Member') {
+      missing.add('display name');
+    }
+    if (profile.city == null || profile.city!.trim().isEmpty) {
+      missing.add('city');
+    }
+    if (profile.interests.isEmpty) missing.add('interests');
+    if (missing.isEmpty) return null;
+
+    return Material(
+      color: Theme.of(context).colorScheme.tertiaryContainer.withValues(alpha: 0.45),
+      borderRadius: BorderRadius.circular(8),
+      child: ListTile(
+        dense: true,
+        leading: const Icon(Icons.person_outline),
+        title: Text('Finish your profile (${missing.join(', ')})'),
+        subtitle: const Text('Helps others trust hosts and find good matches.'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => context.go('/profile'),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('The Gathering'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.flag_outlined),
+            tooltip: 'Reports inbox',
+            onPressed: () => context.push('/reports'),
+          ),
           IconButton(
             icon: const Icon(Icons.my_location),
             tooltip: 'Refresh location',
@@ -273,6 +307,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Builder(
+              builder: (context) {
+                final nudge = _profileNudge(context);
+                if (nudge == null) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: nudge,
+                );
+              },
+            ),
             Text(
               _showingAllUpcoming
                   ? 'Upcoming activities — ${_getFilterLabel()}'

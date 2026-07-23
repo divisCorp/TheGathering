@@ -6,6 +6,7 @@ import 'package:the_gathering/providers/auth_provider.dart';
 import 'package:the_gathering/screens/auth_screen.dart';
 import 'package:the_gathering/screens/event_detail_screen.dart';
 import 'package:the_gathering/screens/main_shell.dart';
+import 'package:the_gathering/screens/reports_inbox_screen.dart';
 
 /// Notifies GoRouter when auth changes — without recreating the router.
 class _AuthRouterRefresh extends ChangeNotifier {
@@ -54,6 +55,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           final event = state.extra as GatheringEvent;
           return EventDetailScreen(event: event);
         },
+      ),
+      GoRoute(
+        path: '/reports',
+        builder: (context, state) => const ReportsInboxScreen(),
       ),
     ],
   );

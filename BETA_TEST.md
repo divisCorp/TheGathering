@@ -67,8 +67,10 @@ Send feedback as: **steps → expected → actual → device/browser**.
 
 ---
 
-## Optional SQL if discovery empties after a schema change
-Run `supabase/shipping_rls_beta.sql` so signed-in users can always view active events + submit reports.
+## Optional SQL (run in Supabase SQL Editor if needed)
+- `supabase/fix_discovery_rls.sql` — multi-user can see each other’s events  
+- `supabase/shipping_rls_beta.sql` — open active-event select + reports insert  
+- `supabase/moderation_beta.sql` — reports inbox can list/update + hide activities
 
 ## New things to poke
 - Event detail → **Add to calendar** (Google or copy ICS)  

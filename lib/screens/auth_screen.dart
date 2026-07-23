@@ -496,6 +496,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               ),
               textAlign: TextAlign.center,
             ),
+            const SizedBox(height: 8),
+            Text(
+              'Beta v0.1.2',
+              style: TextStyle(
+                fontSize: 10,
+                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+              ),
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       ),
