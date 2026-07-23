@@ -13,6 +13,20 @@ final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Surface unexpected errors instead of a blank red screen on web.
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    if (kDebugMode) {
+      debugPrint('[FlutterError] ${details.exceptionAsString()}');
+    }
+  };
+  WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+    if (kDebugMode) {
+      debugPrint('[PlatformError] $error\n$stack');
+    }
+    return true;
+  };
+
   String supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
   String supabaseAnonKey =
       const String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY');
@@ -78,6 +92,22 @@ class TheGatheringApp extends ConsumerWidget {
       darkTheme: _buildDarkTheme(),
       routerConfig: router,
       debugShowCheckedModeBanner: false,
+      builder: (context, child) {
+        ErrorWidget.builder = (details) {
+          return Material(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Something went wrong.\n${details.exceptionAsString()}',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          );
+        };
+        return child ?? const SizedBox.shrink();
+      },
     );
   }
 

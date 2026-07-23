@@ -2,7 +2,7 @@ name: the_gathering
 description: "The Gathering - Uplifting activities. Genuine friendships. Right where you are. Mobile app for LDS members to find and organize wholesome activities."
 publish_to: 'none'
 
-version: 0.1.3+4
+version: 0.1.4+5
 
 environment:
   sdk: '>=3.3.0 <4.0.0'

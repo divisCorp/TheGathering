@@ -219,12 +219,15 @@ class EventsService {
     final user = SupabaseService.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
-    await _client.from('rsvps').upsert({
-      'user_id': user.id,
-      'event_id': eventId,
-      'status': status,
-      'note': note,
-    });
+    await _client.from('rsvps').upsert(
+      {
+        'user_id': user.id,
+        'event_id': eventId,
+        'status': status,
+        'note': note,
+      },
+      onConflict: 'user_id,event_id',
+    );
   }
 
   /// Remove RSVP for an event.
@@ -249,6 +252,36 @@ class EventsService {
         .order('created_at', ascending: true);
 
     return List<Map<String, dynamic>>.from(response);
+  }
+
+  /// Counts of going / maybe per event (for host dashboard cards).
+  static Future<Map<String, ({int going, int maybe})>> fetchRsvpCounts(
+    List<String> eventIds,
+  ) async {
+    if (eventIds.isEmpty) return {};
+    final response = await _client
+        .from('rsvps')
+        .select('event_id, status')
+        .inFilter('event_id', eventIds)
+        .inFilter('status', ['going', 'maybe']);
+
+    final counts = <String, ({int going, int maybe})>{};
+    for (final id in eventIds) {
+      counts[id] = (going: 0, maybe: 0);
+    }
+    for (final row in response as List<dynamic>) {
+      final map = row as Map<String, dynamic>;
+      final id = map['event_id'] as String?;
+      final status = map['status'] as String?;
+      if (id == null || !counts.containsKey(id)) continue;
+      final cur = counts[id]!;
+      if (status == 'going') {
+        counts[id] = (going: cur.going + 1, maybe: cur.maybe);
+      } else if (status == 'maybe') {
+        counts[id] = (going: cur.going, maybe: cur.maybe + 1);
+      }
+    }
+    return counts;
   }
 
   /// Cancel an event (host only). Soft-cancel so history/reports remain.
