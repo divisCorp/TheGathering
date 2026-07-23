@@ -1,6 +1,5 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:the_gathering/models/event.dart';
@@ -99,6 +98,11 @@ class _MyActivitiesScreenState extends State<MyActivitiesScreen> {
         title: const Text('My Activities'),
         actions: [
           IconButton(
+            tooltip: 'Host new activity',
+            onPressed: () => context.push('/create'),
+            icon: const Icon(Icons.add),
+          ),
+          IconButton(
             tooltip: 'Refresh',
             onPressed: _loadData,
             icon: const Icon(Icons.refresh),
@@ -135,15 +139,7 @@ class _MyActivitiesScreenState extends State<MyActivitiesScreen> {
                   title: const Text('You are not hosting yet'),
                   subtitle: const Text('Create a wholesome activity for your area'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    // Switch user to Create tab via shell would need callback;
-                    // open create as full route is not registered — nudge Discover seed.
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Use the Create tab to host an activity.'),
-                      ),
-                    );
-                  },
+                  onTap: () => context.push('/create'),
                 ),
               )
             else
@@ -229,7 +225,39 @@ class _MyActivitiesScreenState extends State<MyActivitiesScreen> {
                         '${counts.going} going · ${counts.maybe} maybe',
                       ),
                       isThreeLine: true,
-                      trailing: const Chip(label: Text('Host')),
+                      trailing: PopupMenuButton<String>(
+                        onSelected: (v) async {
+                          if (v == 'open') {
+                            context.push('/event', extra: e);
+                          } else if (v == 'edit') {
+                            await _editHostedEvent(e);
+                          } else if (v == 'duplicate') {
+                            context.push('/create', extra: e);
+                          } else if (v == 'invite') {
+                            await Clipboard.setData(
+                              ClipboardData(text: EventsService.inviteText(e)),
+                            );
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Invite copied to clipboard'),
+                              ),
+                            );
+                          }
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(value: 'open', child: Text('Open')),
+                          PopupMenuItem(value: 'edit', child: Text('Edit')),
+                          PopupMenuItem(
+                            value: 'duplicate',
+                            child: Text('Duplicate next week'),
+                          ),
+                          PopupMenuItem(
+                            value: 'invite',
+                            child: Text('Copy invite'),
+                          ),
+                        ],
+                      ),
                       onTap: () => context.push('/event', extra: e),
                     ),
                   ),

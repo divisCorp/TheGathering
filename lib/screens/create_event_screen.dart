@@ -9,9 +9,13 @@ import 'package:the_gathering/services/interests_service.dart';
 /// Event Creation Wizard.
 /// Supports templates, tags, tiers, standards, recurring notes, location (now with current GPS capture).
 class CreateEventScreen extends StatefulWidget {
-  final GatheringEvent? event; // if provided, we are editing
+  /// If provided, we are editing an existing event.
+  final GatheringEvent? event;
 
-  const CreateEventScreen({super.key, this.event});
+  /// If provided (and [event] is null), prefill a new event as a duplicate.
+  final GatheringEvent? duplicateFrom;
+
+  const CreateEventScreen({super.key, this.event, this.duplicateFrom});
 
   @override
   State<CreateEventScreen> createState() => _CreateEventScreenState();
@@ -41,25 +45,35 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 
   bool get _isEditing => widget.event != null;
 
+  void _prefillFrom(GatheringEvent e, {required bool shiftWeek}) {
+    _titleController.text = e.title;
+    _descController.text = e.description ?? '';
+    _startTime = shiftWeek
+        ? e.startTime.add(const Duration(days: 7))
+        : e.startTime;
+    if (_startTime.isBefore(DateTime.now())) {
+      _startTime = DateTime.now().add(const Duration(days: 1));
+    }
+    _addressController.text = e.address ?? '';
+    _eventLat = e.lat;
+    _eventLon = e.lon;
+    _locationType = e.locationType;
+    _locationPrivacy = e.locationPrivacy;
+    _isRecurring = e.isRecurring;
+    _recurrenceController.text = e.recurrenceNote ?? '';
+    _maxAttendees = e.maxAttendees;
+    _selectedTags = List.from(e.tags);
+  }
+
   @override
   void initState() {
     super.initState();
     if (_isEditing) {
-      final e = widget.event!;
-      _titleController.text = e.title;
-      _descController.text = e.description ?? '';
-      _startTime = e.startTime;
-      _addressController.text = e.address ?? '';
-      _eventLat = e.lat;
-      _eventLon = e.lon;
-      _locationType = e.locationType;
-      _locationPrivacy = e.locationPrivacy;
-      _isRecurring = e.isRecurring;
-      _recurrenceController.text = e.recurrenceNote ?? '';
-      _maxAttendees = e.maxAttendees;
-      _selectedTags = List.from(e.tags);
-      if (_templates.contains(e.title)) {
-        _selectedTemplate = e.title;
+      _prefillFrom(widget.event!, shiftWeek: false);
+    } else if (widget.duplicateFrom != null) {
+      _prefillFrom(widget.duplicateFrom!, shiftWeek: true);
+      if (widget.duplicateFrom!.lat == null) {
+        _useCurrentLocation(silent: true);
       }
     } else {
       // Auto-pin map location so new events show up in Discover nearby.
@@ -274,7 +288,15 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_isEditing ? 'Edit Activity' : 'Host an Activity')),
+      appBar: AppBar(
+        title: Text(
+          _isEditing
+              ? 'Edit Activity'
+              : widget.duplicateFrom != null
+                  ? 'Duplicate Activity'
+                  : 'Host an Activity',
+        ),
+      ),
       body: Form(
         key: _formKey,
         child: ListView(

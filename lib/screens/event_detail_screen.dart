@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:the_gathering/models/event.dart';
 import 'package:the_gathering/providers/current_profile_provider.dart';
@@ -337,12 +338,19 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
               if (v == 'share') _shareInvite();
               if (v == 'report') _reportEvent();
               if (v == 'edit') _editEvent();
+              if (v == 'duplicate') {
+                context.push('/create', extra: _event);
+              }
               if (v == 'delete') _deleteEvent();
             },
             itemBuilder: (ctx) => [
               const PopupMenuItem(value: 'share', child: Text('Copy invite text')),
               if (_isHost) ...[
                 const PopupMenuItem(value: 'edit', child: Text('Edit activity')),
+                const PopupMenuItem(
+                  value: 'duplicate',
+                  child: Text('Duplicate next week'),
+                ),
                 const PopupMenuItem(
                   value: 'delete',
                   child: Text('Cancel activity'),

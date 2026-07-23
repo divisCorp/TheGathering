@@ -4,9 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:the_gathering/models/event.dart';
 import 'package:the_gathering/providers/auth_provider.dart';
 import 'package:the_gathering/screens/auth_screen.dart';
+import 'package:the_gathering/screens/create_event_screen.dart';
 import 'package:the_gathering/screens/event_detail_screen.dart';
 import 'package:the_gathering/screens/main_shell.dart';
 import 'package:the_gathering/screens/reports_inbox_screen.dart';
+import 'package:the_gathering/screens/terms_screen.dart';
 
 /// Notifies GoRouter when auth changes — without recreating the router.
 class _AuthRouterRefresh extends ChangeNotifier {
@@ -31,7 +33,8 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       final loc = state.matchedLocation;
       final isAuthRoute = loc == '/auth';
 
-      if (!isAuthenticated && !isAuthRoute) return '/auth';
+      final isPublicLegal = loc == '/terms';
+      if (!isAuthenticated && !isAuthRoute && !isPublicLegal) return '/auth';
       // Only leave auth after a real session — not while typing/submitting.
       if (isAuthenticated && isAuthRoute) return '/home';
       return null;
@@ -59,6 +62,20 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/reports',
         builder: (context, state) => const ReportsInboxScreen(),
+      ),
+      GoRoute(
+        path: '/create',
+        builder: (context, state) {
+          final extra = state.extra;
+          if (extra is GatheringEvent) {
+            return CreateEventScreen(duplicateFrom: extra);
+          }
+          return const CreateEventScreen();
+        },
+      ),
+      GoRoute(
+        path: '/terms',
+        builder: (context, state) => const TermsScreen(),
       ),
     ],
   );

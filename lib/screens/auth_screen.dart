@@ -497,8 +497,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => context.push('/terms'),
+              child: const Text('Privacy & standards'),
+            ),
             Text(
-              'Beta v0.1.4',
+              'Beta v0.1.5',
               style: TextStyle(
                 fontSize: 10,
                 color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),

@@ -45,6 +45,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _isSeeding = false;
   /// True when list is filled from non-geo upcoming fallback.
   bool _showingAllUpcoming = false;
+  Timer? _searchDebounce;
   late final MapController _mapController = MapController();
 
   @override
@@ -85,6 +86,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -114,10 +116,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _onSearchChanged() {
-    if (_searchController.text != _searchQuery) {
-      _searchQuery = _searchController.text;
-      _loadEvents(reset: true);
-    }
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      final next = _searchController.text;
+      if (next != _searchQuery) {
+        _searchQuery = next;
+        _loadEvents(reset: true);
+      }
+    });
   }
 
   Future<void> _loadEvents({bool reset = false}) async {
