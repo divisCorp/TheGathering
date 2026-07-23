@@ -109,6 +109,18 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
     }
   }
 
+  Future<void> _shareInvite() async {
+    final text = EventsService.inviteText(_event);
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Invite copied — paste into texts, email, or group chats.'),
+        duration: Duration(seconds: 4),
+      ),
+    );
+  }
+
   Future<void> _addToCalendar() async {
     final action = await showModalBottomSheet<String>(
       context: context,
@@ -311,17 +323,24 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
         title: Text(event.title),
         actions: [
           IconButton(
+            tooltip: 'Copy invite',
+            icon: const Icon(Icons.ios_share),
+            onPressed: _shareInvite,
+          ),
+          IconButton(
             tooltip: 'Add to calendar',
             icon: const Icon(Icons.calendar_month_outlined),
             onPressed: _addToCalendar,
           ),
           PopupMenuButton<String>(
             onSelected: (v) {
+              if (v == 'share') _shareInvite();
               if (v == 'report') _reportEvent();
               if (v == 'edit') _editEvent();
               if (v == 'delete') _deleteEvent();
             },
             itemBuilder: (ctx) => [
+              const PopupMenuItem(value: 'share', child: Text('Copy invite text')),
               if (_isHost) ...[
                 const PopupMenuItem(value: 'edit', child: Text('Edit activity')),
                 const PopupMenuItem(
@@ -429,10 +448,24 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
           ),
 
           const SizedBox(height: 20),
-          FilledButton.tonalIcon(
-            onPressed: _addToCalendar,
-            icon: const Icon(Icons.calendar_month_outlined),
-            label: const Text('Add to calendar'),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: _shareInvite,
+                  icon: const Icon(Icons.ios_share),
+                  label: const Text('Copy invite'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: _addToCalendar,
+                  icon: const Icon(Icons.calendar_month_outlined),
+                  label: const Text('Calendar'),
+                ),
+              ),
+            ],
           ),
 
           const SizedBox(height: 24),

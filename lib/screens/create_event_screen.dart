@@ -58,10 +58,12 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       _recurrenceController.text = e.recurrenceNote ?? '';
       _maxAttendees = e.maxAttendees;
       _selectedTags = List.from(e.tags);
-      // try to match a template if possible (basic)
       if (_templates.contains(e.title)) {
         _selectedTemplate = e.title;
       }
+    } else {
+      // Auto-pin map location so new events show up in Discover nearby.
+      _useCurrentLocation(silent: true);
     }
   }
 
@@ -138,24 +140,30 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     });
   }
 
-  Future<void> _useCurrentLocation() async {
+  Future<void> _useCurrentLocation({bool silent = false}) async {
     try {
       final permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
         await Geolocator.requestPermission();
       }
-      final pos = await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium));
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.medium),
+      );
       if (mounted) {
         setState(() {
           _eventLat = pos.latitude;
           _eventLon = pos.longitude;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Using current location for event')),
-        );
+        if (!silent) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Using current location for event')),
+          );
+        }
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted && !silent) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Could not get location: $e')),
         );
@@ -324,9 +332,30 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                     const SizedBox(height: 8),
                     Text(_isEditing
                         ? 'Changes saved.'
-                        : 'Your event is live. Others nearby can discover it now.'),
+                        : 'Your event is live. Share an invite so friends know — map discovery works best when location is pinned.'),
+                    if (_eventLat != null && _eventLon != null)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 6),
+                        child: Text(
+                          'Map pin saved ✓',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                      )
+                    else
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          'Tip: next time tap “Use current location” so it appears on the Discover map.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ),
                     const SizedBox(height: 12),
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
                         if (_isEditing)
                           ElevatedButton(
@@ -338,10 +367,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                             onPressed: _createAnother,
                             child: const Text('Create another'),
                           ),
-                          const SizedBox(width: 8),
                           ElevatedButton(
                             onPressed: () => context.go('/home'),
-                            child: const Text('Browse in Discover'),
+                            child: const Text('Open Discover'),
                           ),
                         ],
                       ],

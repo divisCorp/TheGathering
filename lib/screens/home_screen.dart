@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:the_gathering/models/event.dart';
 import 'package:the_gathering/services/events_service.dart';
 import 'package:the_gathering/services/interests_service.dart';
@@ -41,6 +42,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // Default wider timeframe so beta seed events are visible without hunting.
   String _dateFilter = 'all_future';
   bool _isSeeding = false;
+  /// True when list is filled from non-geo upcoming fallback.
+  bool _showingAllUpcoming = false;
   late final MapController _mapController = MapController();
 
   @override
@@ -48,6 +51,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.initState();
     _searchController.addListener(_onSearchChanged);
     _getCurrentLocation().then((_) => _loadEvents(reset: true));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowWelcome());
+  }
+
+  Future<void> _maybeShowWelcome() async {
+    // Lightweight first-run tip; ignore failures (prefs optional).
+    try {
+      // ignore: depend_on_referenced_packages
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool('tg_welcome_v1') == true) return;
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Welcome to beta'),
+          content: const Text(
+            'Discover activities near you, RSVP, or host your own.\n\n'
+            'If the map looks empty, tap “Load sample activities” or create one with your location pinned.\n\n'
+            'Friends need their own accounts (Sign out first on shared devices).',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Let\'s go'),
+            ),
+          ],
+        ),
+      );
+      await prefs.setBool('tg_welcome_v1', true);
+    } catch (_) {}
   }
 
   @override
@@ -99,7 +131,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
 
     try {
-      final newEvents = await EventsService.fetchNearbyEvents(
+      var newEvents = await EventsService.fetchNearbyEvents(
         lat: _currentLat,
         lon: _currentLon,
         radiusMiles: _radiusMiles,
@@ -110,15 +142,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         endDate: _getEndDate(),
       );
 
+      var usedFallback = false;
+      // If nothing in radius (or RLS/geo not ready), show all upcoming activities.
+      if (reset && newEvents.isEmpty) {
+        final upcoming = await EventsService.fetchUpcomingEvents(
+          limit: _pageSize,
+          offset: 0,
+          search: _searchQuery.isNotEmpty ? _searchQuery : null,
+          startDate: _getStartDate(),
+          endDate: _getEndDate(),
+        );
+        if (upcoming.isNotEmpty) {
+          newEvents = upcoming;
+          usedFallback = true;
+        }
+      }
+
       if (!mounted) return;
       setState(() {
         if (reset) {
           _events = newEvents;
+          _showingAllUpcoming = usedFallback;
         } else {
           _events.addAll(newEvents);
         }
         _currentOffset += newEvents.length;
-        _hasMore = newEvents.length == _pageSize;
+        _hasMore = !usedFallback && newEvents.length == _pageSize;
         _isLoading = false;
         _isLoadingMore = false;
       });
@@ -129,7 +178,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _isLoadingMore = false;
       });
       if (mounted) {
-        // ignore: use_build_context_synchronously
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to load events: $e')),
         );
@@ -226,15 +274,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Near you (${_radiusMiles.toStringAsFixed(0)} mi) — ${_getFilterLabel()}',
+              _showingAllUpcoming
+                  ? 'Upcoming activities — ${_getFilterLabel()}'
+                  : 'Near you (${_radiusMiles.toStringAsFixed(0)} mi) — ${_getFilterLabel()}',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
             ),
-            if (_locationLoaded)
+            if (_showingAllUpcoming)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'No map pins in your radius yet — showing all upcoming you can access. Host with “use current location” so they appear on the map.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              )
+            else if (_locationLoaded)
               Text(
                 '${_currentLat.toStringAsFixed(2)}, ${_currentLon.toStringAsFixed(2)} (app location)',
-                style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             const SizedBox(height: 8),
             TextField(

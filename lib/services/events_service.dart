@@ -111,35 +111,76 @@ class EventsService {
           .map<GatheringEvent>((json) => _fromJson(json as Map<String, dynamic>))
           .toList();
     } catch (_) {
-      // Fallback for dev if RPC not available yet (non-fatal)
-      var query = _client
-          .from('events')
-          .select()
-          .eq('status', 'active');
-
-      if (search != null && search.trim().isNotEmpty) {
-        query = query.ilike('title', '%${search.trim()}%');
-      }
-
-      if (startDate != null) {
-        query = query.gte('start_time', startDate.toIso8601String());
-      }
-      if (endDate != null) {
-        query = query.lte('start_time', endDate.toIso8601String());
-      }
-
-      final response = await query
-          .order('start_time', ascending: true)
-          .range(offset, offset + limit - 1);
-
-      return (response as List<dynamic>)
-          .map<GatheringEvent>((json) => _fromJson(json as Map<String, dynamic>))
-          .toList();
+      return fetchUpcomingEvents(
+        limit: limit,
+        offset: offset,
+        search: search,
+        startDate: startDate,
+        endDate: endDate,
+      );
     }
+  }
+
+  /// All active upcoming events (no geo). Used when map radius is empty
+  /// so beta still has a useful list feed.
+  static Future<List<GatheringEvent>> fetchUpcomingEvents({
+    int limit = 40,
+    int offset = 0,
+    String? search,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    var query = _client.from('events').select().eq('status', 'active');
+
+    if (search != null && search.trim().isNotEmpty) {
+      query = query.ilike('title', '%${search.trim()}%');
+    }
+    if (startDate != null) {
+      query = query.gte('start_time', startDate.toIso8601String());
+    }
+    if (endDate != null) {
+      query = query.lte('start_time', endDate.toIso8601String());
+    }
+
+    final response = await query
+        .order('start_time', ascending: true)
+        .range(offset, offset + limit - 1);
+
+    return (response as List<dynamic>)
+        .map<GatheringEvent>((json) => _fromJson(json as Map<String, dynamic>))
+        .toList();
   }
 
   static GatheringEvent _fromJson(Map<String, dynamic> json) {
     return GatheringEvent.fromSupabase(json);
+  }
+
+  /// Invite text for sharing (clipboard / messages).
+  static String inviteText(GatheringEvent event) {
+    final when = event.startTime.toLocal();
+    final date =
+        '${when.year}-${when.month.toString().padLeft(2, '0')}-${when.day.toString().padLeft(2, '0')}';
+    final time =
+        '${when.hour.toString().padLeft(2, '0')}:${when.minute.toString().padLeft(2, '0')}';
+    final buf = StringBuffer()
+      ..writeln('You\'re invited to a Gathering activity!')
+      ..writeln()
+      ..writeln(event.title)
+      ..writeln('$date at $time')
+      ..writeln();
+    if (event.address != null && event.address!.isNotEmpty) {
+      buf.writeln(event.address);
+      buf.writeln();
+    }
+    if (event.description != null && event.description!.isNotEmpty) {
+      buf.writeln(event.description);
+      buf.writeln();
+    }
+    buf.writeln('Join The Gathering (beta):');
+    buf.writeln('https://diviscorp.github.io/TheGathering/');
+    buf.writeln();
+    buf.writeln('Wholesome activities · genuine friendships');
+    return buf.toString();
   }
 
   /// Get events hosted by current user.
