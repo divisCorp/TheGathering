@@ -371,510 +371,561 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Builder(
-              builder: (context) {
-                final nudge = _profileNudge(context);
-                if (nudge == null) return const SizedBox.shrink();
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: nudge,
-                );
-              },
-            ),
-            Text(
-              _showingAllUpcoming
-                  ? 'Upcoming activities — ${_getFilterLabel()}'
-                  : 'Near you (${_radiusMiles.toStringAsFixed(0)} mi) — ${_getFilterLabel()}',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-            if (_showingAllUpcoming)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  'No map pins in your radius yet — showing all upcoming you can access. Host with “use current location” so they appear on the map.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-              )
-            else if (_locationLoaded)
-              Text(
-                '${_currentLat.toStringAsFixed(2)}, ${_currentLon.toStringAsFixed(2)} (app location)',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search events...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _searchController.clear();
-                        },
-                      )
-                    : null,
-                border: const OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
+      // Single scroll surface: filters + map + list (fixes mobile web where
+      // fixed header ate all height and list couldn't scroll).
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: NotificationListener<ScrollNotification>(
+          onNotification: (notification) {
+            if (notification.metrics.pixels >=
+                    notification.metrics.maxScrollExtent - 200 &&
+                !_isLoadingMore &&
+                _hasMore &&
+                !_isLoading &&
+                _filteredEvents.isNotEmpty) {
+              _loadEvents();
+            }
+            return false;
+          },
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              // --- Header / filters ---
+              _buildFiltersSliver(),
 
-            // Radius presets + slider
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  const Text('Radius: '),
-                  ...[5.0, 15.0, 25.0, 50.0].map((mi) {
-                    final selected = (_radiusMiles - mi).abs() < 0.5;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: ChoiceChip(
-                        label: Text('${mi.toInt()} mi'),
-                        selected: selected,
-                        onSelected: (_) {
-                          setState(() => _radiusMiles = mi);
-                          _saveDiscoverPrefs();
-                          _loadEvents(reset: true);
-                        },
+              // --- Map ---
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: SizedBox(
+                    height: 180,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Stack(
+                        children: [
+                          FlutterMap(
+                            mapController: _mapController,
+                            options: MapOptions(
+                              initialCenter: LatLng(_currentLat, _currentLon),
+                              initialZoom: 13.0,
+                            ),
+                            children: [
+                              TileLayer(
+                                urlTemplate:
+                                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                userAgentPackageName: 'com.example.the_gathering',
+                              ),
+                              CircleLayer(
+                                circles: [
+                                  CircleMarker(
+                                    point: LatLng(_currentLat, _currentLon),
+                                    radius: _radiusMiles * 1609.34,
+                                    color: Colors.blue.withValues(alpha: 0.15),
+                                    borderStrokeWidth: 2,
+                                    borderColor: Colors.blue,
+                                  ),
+                                ],
+                              ),
+                              MarkerLayer(
+                                markers: [
+                                  Marker(
+                                    point: LatLng(_currentLat, _currentLon),
+                                    width: 40,
+                                    height: 40,
+                                    child: const Icon(
+                                      Icons.my_location,
+                                      color: Colors.blue,
+                                      size: 30,
+                                    ),
+                                  ),
+                                  ..._filteredEvents
+                                      .where((e) => e.lat != null && e.lon != null)
+                                      .map(
+                                        (e) => Marker(
+                                          point: LatLng(e.lat!, e.lon!),
+                                          width: 36,
+                                          height: 36,
+                                          child: GestureDetector(
+                                            onTap: () =>
+                                                context.push('/event', extra: e),
+                                            child: const Icon(
+                                              Icons.location_on,
+                                              color: Colors.red,
+                                              size: 28,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: FloatingActionButton.small(
+                              heroTag: 'recenter',
+                              onPressed: () {
+                                _mapController.move(
+                                  LatLng(_currentLat, _currentLon),
+                                  13.0,
+                                );
+                              },
+                              child: const Icon(
+                                Icons.center_focus_strong,
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    );
-                  }),
-                ],
-              ),
-            ),
-            Row(
-              children: [
-                Expanded(
-                  child: Slider(
-                    value: _radiusMiles,
-                    min: 1,
-                    max: 50,
-                    divisions: 49,
-                    label: '${_radiusMiles.toStringAsFixed(0)} mi',
-                    onChanged: (v) {
-                      setState(() => _radiusMiles = v);
-                    },
-                    onChangeEnd: (v) {
-                      _saveDiscoverPrefs();
-                      _loadEvents(reset: true);
-                    },
+                    ),
                   ),
                 ),
-                Text('${_radiusMiles.toStringAsFixed(0)} mi'),
-              ],
-            ),
-
-            // Date range filter (future activities)
-            DropdownButtonFormField<String>(
-              initialValue: _dateFilter,
-              decoration: const InputDecoration(
-                labelText: 'Timeframe',
-                border: OutlineInputBorder(),
-                isDense: true,
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
-              items: const [
-                DropdownMenuItem(value: 'today', child: Text('Today')),
-                DropdownMenuItem(value: 'this_week', child: Text('This week')),
-                DropdownMenuItem(value: 'this_month', child: Text('This month')),
-                DropdownMenuItem(value: 'next_3_months', child: Text('Next 3 months')),
-                DropdownMenuItem(value: 'all_future', child: Text('All upcoming')),
-              ],
-              onChanged: (v) {
-                if (v != null && v != _dateFilter) {
-                  setState(() => _dateFilter = v);
-                  _saveDiscoverPrefs();
-                  _loadEvents(reset: true);
-                }
-              },
-            ),
-            const SizedBox(height: 8),
 
-            // Basic filter chips (PR4 direction)
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  FilterChip(
-                    label: const Text('All tags'),
-                    selected: _selectedFilter == null,
-                    onSelected: (_) => setState(() => _selectedFilter = null),
+              // --- Activities heading ---
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Text(
+                    'Activities',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                   ),
-                  const SizedBox(width: 6),
-                  FilterChip(
-                    label: const Text('Free only'),
-                    selected: _freeOnly,
-                    onSelected: (v) {
-                      setState(() => _freeOnly = v);
-                      _saveDiscoverPrefs();
-                    },
+                ),
+              ),
+
+              // --- List / empty / loading ---
+              if (_isLoading)
+                const SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (_filteredEvents.isEmpty)
+                SliverToBoxAdapter(child: _buildEmptyState(context))
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        if (index == _filteredEvents.length) {
+                          return const Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+                        return _buildEventCard(
+                          context,
+                          _filteredEvents[index],
+                        );
+                      },
+                      childCount:
+                          _filteredEvents.length + (_hasMore ? 1 : 0),
+                    ),
                   ),
-                  const SizedBox(width: 6),
-                  FilterChip(
-                    label: const Text('Recurring'),
-                    selected: _recurringOnly,
-                    onSelected: (v) {
-                      setState(() => _recurringOnly = v);
-                      _saveDiscoverPrefs();
-                    },
-                  ),
-                  const SizedBox(width: 6),
-                  ...InterestsService.grouped.keys.take(4).map((area) => Padding(
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Filters + search header (scrolls with the page).
+  Widget _buildFiltersSliver() {
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      sliver: SliverList(
+        delegate: SliverChildListDelegate([
+          Builder(
+            builder: (context) {
+              final nudge = _profileNudge(context);
+              if (nudge == null) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: nudge,
+              );
+            },
+          ),
+          Text(
+            _showingAllUpcoming
+                ? 'Upcoming activities — ${_getFilterLabel()}'
+                : 'Near you (${_radiusMiles.toStringAsFixed(0)} mi) — ${_getFilterLabel()}',
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+          if (_showingAllUpcoming)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'No map pins in your radius yet — showing all upcoming you can access.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            )
+          else if (_locationLoaded)
+            Text(
+              '${_currentLat.toStringAsFixed(2)}, ${_currentLon.toStringAsFixed(2)} (app location)',
+              style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Search events...',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () => _searchController.clear(),
+                    )
+                  : null,
+              border: const OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                const Text('Radius: '),
+                ...[5.0, 15.0, 25.0, 50.0].map((mi) {
+                  final selected = (_radiusMiles - mi).abs() < 0.5;
+                  return Padding(
                     padding: const EdgeInsets.only(right: 6),
-                    child: FilterChip(
-                      label: Text(area),
-                      selected: _selectedFilter == area,
-                      onSelected: (selected) {
-                        setState(() => _selectedFilter = selected ? area : null);
+                    child: ChoiceChip(
+                      label: Text('${mi.toInt()} mi'),
+                      selected: selected,
+                      onSelected: (_) {
+                        setState(() => _radiusMiles = mi);
+                        _saveDiscoverPrefs();
+                        _loadEvents(reset: true);
                       },
                     ),
-                  )),
-                ],
-              ),
+                  );
+                }),
+              ],
             ),
-            const SizedBox(height: 4),
-
-            if (_searchQuery.isNotEmpty ||
-                _selectedFilter != null ||
-                _freeOnly ||
-                _recurringOnly)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  onPressed: () {
-                    _searchController.clear();
-                    setState(() {
-                      _selectedFilter = null;
-                      _freeOnly = false;
-                      _recurringOnly = false;
-                    });
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: Slider(
+                  value: _radiusMiles,
+                  min: 1,
+                  max: 50,
+                  divisions: 49,
+                  label: '${_radiusMiles.toStringAsFixed(0)} mi',
+                  onChanged: (v) => setState(() => _radiusMiles = v),
+                  onChangeEnd: (_) {
                     _saveDiscoverPrefs();
                     _loadEvents(reset: true);
                   },
-                  icon: const Icon(Icons.clear, size: 16),
-                  label: const Text('Clear search & filters'),
                 ),
               ),
-
-            if (!_isLoading && _filteredEvents.isNotEmpty)
-              Text(
-                '${_filteredEvents.length} event${_filteredEvents.length == 1 ? '' : 's'} within ${_radiusMiles.toStringAsFixed(0)} mi',
-                style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+              Text('${_radiusMiles.toStringAsFixed(0)} mi'),
+            ],
+          ),
+          DropdownButtonFormField<String>(
+            initialValue: _dateFilter,
+            decoration: const InputDecoration(
+              labelText: 'Timeframe',
+              border: OutlineInputBorder(),
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ),
+            items: const [
+              DropdownMenuItem(value: 'today', child: Text('Today')),
+              DropdownMenuItem(value: 'this_week', child: Text('This week')),
+              DropdownMenuItem(value: 'this_month', child: Text('This month')),
+              DropdownMenuItem(
+                value: 'next_3_months',
+                child: Text('Next 3 months'),
               ),
+              DropdownMenuItem(
+                value: 'all_future',
+                child: Text('All upcoming'),
+              ),
+            ],
+            onChanged: (v) {
+              if (v != null && v != _dateFilter) {
+                setState(() => _dateFilter = v);
+                _saveDiscoverPrefs();
+                _loadEvents(reset: true);
+              }
+            },
+          ),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                FilterChip(
+                  label: const Text('All tags'),
+                  selected: _selectedFilter == null,
+                  onSelected: (_) => setState(() => _selectedFilter = null),
+                ),
+                const SizedBox(width: 6),
+                FilterChip(
+                  label: const Text('Free only'),
+                  selected: _freeOnly,
+                  onSelected: (v) {
+                    setState(() => _freeOnly = v);
+                    _saveDiscoverPrefs();
+                  },
+                ),
+                const SizedBox(width: 6),
+                FilterChip(
+                  label: const Text('Recurring'),
+                  selected: _recurringOnly,
+                  onSelected: (v) {
+                    setState(() => _recurringOnly = v);
+                    _saveDiscoverPrefs();
+                  },
+                ),
+                const SizedBox(width: 6),
+                ...InterestsService.grouped.keys.take(4).map(
+                      (area) => Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: FilterChip(
+                          label: Text(area),
+                          selected: _selectedFilter == area,
+                          onSelected: (selected) {
+                            setState(
+                              () => _selectedFilter = selected ? area : null,
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+              ],
+            ),
+          ),
+          if (_searchQuery.isNotEmpty ||
+              _selectedFilter != null ||
+              _freeOnly ||
+              _recurringOnly)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() {
+                    _selectedFilter = null;
+                    _freeOnly = false;
+                    _recurringOnly = false;
+                  });
+                  _saveDiscoverPrefs();
+                  _loadEvents(reset: true);
+                },
+                icon: const Icon(Icons.clear, size: 16),
+                label: const Text('Clear search & filters'),
+              ),
+            ),
+          if (!_isLoading && _filteredEvents.isNotEmpty)
+            Text(
+              '${_filteredEvents.length} event${_filteredEvents.length == 1 ? '' : 's'}',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+        ]),
+      ),
+    );
+  }
 
-            const SizedBox(height: 12),
+  Widget _buildEmptyState(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
+      child: Column(
+        children: [
+          Icon(
+            Icons.explore_outlined,
+            size: 56,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            _searchQuery.isNotEmpty ||
+                    _selectedFilter != null ||
+                    _freeOnly ||
+                    _recurringOnly
+                ? 'No events match your filters. Clear filters or widen the radius/timeframe.'
+                : 'No activities nearby yet for ${_getFilterLabel().toLowerCase()}.\n\n'
+                    'Load sample gatherings to explore, or host the first real one.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyLarge,
+          ),
+          const SizedBox(height: 20),
+          if (_searchQuery.isEmpty &&
+              _selectedFilter == null &&
+              !_freeOnly &&
+              !_recurringOnly) ...[
+            FilledButton.icon(
+              onPressed: _isSeeding ? null : _seedSamples,
+              icon: _isSeeding
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.auto_awesome),
+              label: Text(
+                _isSeeding ? 'Loading samples…' : 'Load sample activities near me',
+              ),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () => context.push('/create'),
+              icon: const Icon(Icons.add),
+              label: const Text('Host an activity'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 
-            // Real map (PR4) + recenter button (polish)
-            SizedBox(
-              height: 200,
-              child: Stack(
+  Widget _buildEventCard(BuildContext context, GatheringEvent event) {
+    final dist = _distanceText(event);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        onTap: () => context.push('/event', extra: event),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              CircleAvatar(
+                backgroundColor:
+                    Theme.of(context).colorScheme.primaryContainer,
+                child: Icon(
+                  event.tags.contains('Physical')
+                      ? Icons.hiking
+                      : Icons.groups,
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            event.title,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                        if (event.cost == null || event.cost == 0)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 4),
+                            child: Text(
+                              'FREE',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                          ),
+                        if (event.isRecurring)
+                          const Padding(
+                            padding: EdgeInsets.only(left: 4),
+                            child: Icon(Icons.repeat, size: 14),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${event.tags.join(' • ')}  •  ${_formatTime(event.startTime)}'
+                      '  ·  ${_relativeWhen(event.startTime)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    if (event.isRecurring && event.recurrenceNote != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          event.recurrenceNote!,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  FlutterMap(
-                    mapController: _mapController,
-                    options: MapOptions(
-                      initialCenter: LatLng(_currentLat, _currentLon),
-                      initialZoom: 13.0,
+                  if (dist.isNotEmpty)
+                    Chip(
+                      label: Text(dist, style: const TextStyle(fontSize: 11)),
+                      padding: EdgeInsets.zero,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
                     ),
-                    children: [
-                      TileLayer(
-                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.example.the_gathering',
-                      ),
-                      CircleLayer(
-                        circles: [
-                          CircleMarker(
-                            point: LatLng(_currentLat, _currentLon),
-                            radius: _radiusMiles * 1609.34, // meters
-                            color: Colors.blue.withValues(alpha: 0.15),
-                            borderStrokeWidth: 2,
-                            borderColor: Colors.blue,
-                          ),
-                        ],
-                      ),
-                      MarkerLayer(
-                        markers: [
-                          // User location marker
-                          Marker(
-                            point: LatLng(_currentLat, _currentLon),
-                            width: 40,
-                            height: 40,
-                            child: const Icon(Icons.my_location, color: Colors.blue, size: 30),
-                          ),
-                          // Event markers (only those with coords) - tappable for details
-                          ..._filteredEvents
-                              .where((e) => e.lat != null && e.lon != null)
-                              .map((e) => Marker(
-                                    point: LatLng(e.lat!, e.lon!),
-                                    width: 36,
-                                    height: 36,
-                                    child: GestureDetector(
-                                      onTap: () => context.push('/event', extra: e),
-                                      child: const Icon(Icons.location_on, color: Colors.red, size: 28),
-                                    ),
-                                  )),
-                        ],
-                      ),
+                  const SizedBox(height: 4),
+                  PopupMenuButton<String>(
+                    child: const Chip(
+                      label: Text('RSVP', style: TextStyle(fontSize: 11)),
+                      padding: EdgeInsets.zero,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onSelected: (status) async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      try {
+                        await EventsService.rsvpToEvent(
+                          eventId: event.id,
+                          status: status,
+                        );
+                        if (mounted) {
+                          messenger.showSnackBar(
+                            SnackBar(content: Text('RSVP set to $status')),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          messenger.showSnackBar(
+                            SnackBar(content: Text('RSVP failed: $e')),
+                          );
+                        }
+                      }
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(value: 'going', child: Text('Going')),
+                      PopupMenuItem(value: 'maybe', child: Text('Maybe')),
+                      PopupMenuItem(value: 'no', child: Text('Not going')),
                     ],
-                  ),
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: FloatingActionButton.small(
-                      heroTag: 'recenter',
-                      onPressed: () {
-                        _mapController.move(LatLng(_currentLat, _currentLon), 13.0);
-                      },
-                      child: const Icon(Icons.center_focus_strong, size: 18),
-                    ),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 16),
-
-            // Events list area with pull-to-refresh (polish)
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: _refresh,
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _filteredEvents.isEmpty
-                        ? ListView(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            children: [
-                              const SizedBox(height: 32),
-                              Icon(
-                                Icons.explore_outlined,
-                                size: 56,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                              const SizedBox(height: 16),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 24),
-                                child: Text(
-                                  _searchQuery.isNotEmpty ||
-                                          _selectedFilter != null ||
-                                          _freeOnly ||
-                                          _recurringOnly
-                                      ? 'No events match your filters. Clear filters or widen the radius/timeframe.'
-                                      : 'No activities nearby yet for ${_getFilterLabel().toLowerCase()}.\n\n'
-                                          'Load sample gatherings to explore, or host the first real one.',
-                                  textAlign: TextAlign.center,
-                                  style: Theme.of(context).textTheme.bodyLarge,
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                              if (_searchQuery.isEmpty &&
-                                  _selectedFilter == null &&
-                                  !_freeOnly &&
-                                  !_recurringOnly) ...[
-                                Center(
-                                  child: FilledButton.icon(
-                                    onPressed: _isSeeding ? null : _seedSamples,
-                                    icon: _isSeeding
-                                        ? const SizedBox(
-                                            width: 18,
-                                            height: 18,
-                                            child: CircularProgressIndicator(strokeWidth: 2),
-                                          )
-                                        : const Icon(Icons.auto_awesome),
-                                    label: Text(
-                                      _isSeeding
-                                          ? 'Loading samples…'
-                                          : 'Load sample activities near me',
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                Center(
-                                  child: OutlinedButton.icon(
-                                    onPressed: () => context.push('/create'),
-                                    icon: const Icon(Icons.add),
-                                    label: const Text('Host an activity'),
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Center(
-                                  child: Text(
-                                    'Samples create ~10 demo events around your map pin (you are the host).',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          )
-                        : NotificationListener<ScrollNotification>(
-                            onNotification: (notification) {
-                              if (notification.metrics.pixels >=
-                                      notification.metrics.maxScrollExtent - 200 &&
-                                  !_isLoadingMore &&
-                                  _hasMore) {
-                                _loadEvents();
-                              }
-                              return false;
-                            },
-                            child: ListView.builder(
-                              itemCount: _filteredEvents.length + (_hasMore ? 1 : 0),
-                              itemBuilder: (context, index) {
-                                if (index == _filteredEvents.length) {
-                                  return const Padding(
-                                    padding: EdgeInsets.all(16),
-                                    child: Center(child: CircularProgressIndicator()),
-                                  );
-                                }
-                                final event = _filteredEvents[index];
-                                final dist = _distanceText(event);
-                                return Card(
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  child: InkWell(
-                                    onTap: () => context.push('/event', extra: event),
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(12),
-                                      child: Row(
-                                        children: [
-                                          CircleAvatar(
-                                            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                                            child: Icon(
-                                              event.tags.contains('Physical') ? Icons.hiking : Icons.groups,
-                                              color: Theme.of(context).colorScheme.onPrimaryContainer,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Row(
-                                                  children: [
-                                                    Expanded(
-                                                      child: Text(
-                                                        event.title,
-                                                        style: const TextStyle(
-                                                          fontWeight: FontWeight.w600,
-                                                          fontSize: 15,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    if (event.cost == null || event.cost == 0)
-                                                      Padding(
-                                                        padding: const EdgeInsets.only(left: 4),
-                                                        child: Text(
-                                                          'FREE',
-                                                          style: TextStyle(
-                                                            fontSize: 10,
-                                                            fontWeight: FontWeight.bold,
-                                                            color: Theme.of(context).colorScheme.primary,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    if (event.isRecurring)
-                                                      const Padding(
-                                                        padding: EdgeInsets.only(left: 4),
-                                                        child: Icon(Icons.repeat, size: 14),
-                                                      ),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  '${event.tags.join(' • ')}  •  ${_formatTime(event.startTime)}'
-                                                  '  ·  ${_relativeWhen(event.startTime)}',
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                                  ),
-                                                ),
-                                                if (event.isRecurring && event.recurrenceNote != null)
-                                                  Padding(
-                                                    padding: const EdgeInsets.only(top: 2),
-                                                    child: Text(
-                                                      event.recurrenceNote!,
-                                                      style: TextStyle(
-                                                        fontSize: 11,
-                                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                                        fontStyle: FontStyle.italic,
-                                                      ),
-                                                    ),
-                                                  ),
-                                              ],
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Column(
-                                            crossAxisAlignment: CrossAxisAlignment.end,
-                                            children: [
-                                              if (dist.isNotEmpty)
-                                                Chip(
-                                                  label: Text(dist, style: const TextStyle(fontSize: 11)),
-                                                  padding: EdgeInsets.zero,
-                                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                                  visualDensity: VisualDensity.compact,
-                                                ),
-                                              const SizedBox(height: 4),
-                                              PopupMenuButton<String>(
-                                                child: const Chip(
-                                                  label: Text('RSVP', style: TextStyle(fontSize: 11)),
-                                                  padding: EdgeInsets.zero,
-                                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                                  visualDensity: VisualDensity.compact,
-                                                ),
-                                                onSelected: (status) async {
-                                                  final messenger = ScaffoldMessenger.of(context);
-                                                  try {
-                                                    await EventsService.rsvpToEvent(
-                                                      eventId: event.id,
-                                                      status: status,
-                                                    );
-                                                    if (mounted) {
-                                                      messenger.showSnackBar(
-                                                        SnackBar(content: Text('RSVP set to $status')),
-                                                      );
-                                                    }
-                                                  } catch (e) {
-                                                    if (mounted) {
-                                                      messenger.showSnackBar(
-                                                        SnackBar(content: Text('RSVP failed: $e')),
-                                                      );
-                                                    }
-                                                  }
-                                                },
-                                                itemBuilder: (context) => const [
-                                                  PopupMenuItem(value: 'going', child: Text('Going')),
-                                                  PopupMenuItem(value: 'maybe', child: Text('Maybe')),
-                                                  PopupMenuItem(value: 'no', child: Text('Not going')),
-                                                ],
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
