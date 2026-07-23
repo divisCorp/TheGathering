@@ -39,9 +39,8 @@ class EventsService {
       'start_time': startTime.toIso8601String(),
       'end_time': endTime?.toIso8601String(),
       'address': address,
-      'location': (lat != null && lon != null) 
-          ? 'POINT($lon $lat)' // For PostGIS geography
-          : null,
+      // Prefer RPC for geography; leave null on insert when coords provided.
+      'location': null,
       'location_type': locationType,
       'location_privacy': locationPrivacy,
       'tags': tags,
@@ -53,7 +52,29 @@ class EventsService {
       'status': 'active',
     }).select('id').single();
 
-    return response['id'] as String;
+    final id = response['id'] as String;
+
+    // Set PostGIS geography reliably (works better than raw WKT inserts).
+    if (lat != null && lon != null) {
+      try {
+        await _client.rpc('set_event_location', params: {
+          'event_id': id,
+          'lat': lat,
+          'lon': lon,
+        });
+      } catch (_) {
+        // Fallback: WKT via update (requires geography cast support)
+        try {
+          await _client.from('events').update({
+            'location': 'SRID=4326;POINT($lon $lat)',
+          }).eq('id', id).eq('host_id', user.id);
+        } catch (_) {
+          // Event exists without pin — still usable in list fallback.
+        }
+      }
+    }
+
+    return id;
   }
 
   static bool _hasBannedKeywords(String text) {

@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,11 +10,7 @@ import 'package:the_gathering/services/profiles_service.dart';
 import 'package:the_gathering/services/supabase_service.dart';
 
 /// My Profile screen + edit flow (PR2).
-/// - Collects full profile fields
-/// - Multi-select interests from 4 areas
-/// - Required avatar upload for activation gate
-/// - Shows verification status
-/// - Privacy notes
+/// Web-safe avatar preview (no dart:io).
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
@@ -28,7 +24,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _isLoadingProfile = true;
   bool _isEditing = false;
 
-  // Form controllers
   final _nameController = TextEditingController(text: 'Member');
   final _bioController = TextEditingController();
   final _cityController = TextEditingController();
@@ -38,8 +33,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   String? _ageRange;
   List<String> _selectedInterests = [];
   String? _avatarUrl;
-  bool _avatarSelected = false;
-  XFile? _pickedImage;  // for immediate preview before/during upload
+  XFile? _pickedImage;
+  Uint8List? _pickedImageBytes;
 
   late UserProfile _profile;
 
@@ -53,8 +48,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       isVerifiedMember: false,
       createdAt: DateTime.now(),
     );
-    // Load via provider (will also populate local state for editing)
     _loadProfile();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _bioController.dispose();
+    _cityController.dispose();
+    _wardController.dispose();
+    _stakeController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadProfile() async {
@@ -75,18 +79,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           _wardController.text = _profile.ward ?? '';
           _stakeController.text = _profile.stake ?? '';
           _avatarUrl = _profile.avatarUrl;
-          // Sanitize any leftover local:// placeholders from failed uploads
           if (_avatarUrl != null && _avatarUrl!.startsWith('local://')) {
             _avatarUrl = null;
           }
           _ageRange = _profile.ageRange;
           _bioController.text = _profile.bio ?? '';
         });
-        // Refresh provider for other parts of app
         ref.read(currentProfileProvider.notifier).refresh();
       }
     } catch (_) {
-      // Profile load failed; keep defaults
+      // keep defaults
     } finally {
       if (mounted) setState(() => _isLoadingProfile = false);
     }
@@ -94,77 +96,84 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _pickAvatar() async {
     final picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery, maxWidth: 800);
+    final XFile? image = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 800,
+      imageQuality: 85,
+    );
 
-    if (image != null) {
-      final user = SupabaseService.currentUser;
-      if (user == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please log in to upload a profile picture.')),
-          );
-        }
-        return;
+    if (image == null) return;
+
+    final user = SupabaseService.currentUser;
+    if (user == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please log in to upload a profile picture.')),
+        );
       }
+      return;
+    }
+
+    final bytes = await image.readAsBytes();
+    setState(() {
+      _pickedImage = image;
+      _pickedImageBytes = bytes;
+    });
+
+    setState(() => _isLoading = true);
+    try {
+      final url = await ProfilesService.uploadAvatar(image, user.id);
       setState(() {
-        _pickedImage = image;
-        _avatarSelected = true;
+        _avatarUrl = url;
+        _pickedImage = null;
+        _pickedImageBytes = null;
       });
-      setState(() => _isLoading = true);
-      try {
-        final userId = user.id;
-        // Real upload to Supabase Storage
-        final url = await ProfilesService.uploadAvatar(image, userId);
-        setState(() {
-          _avatarUrl = url;
-          _pickedImage = null; // switch to remote URL
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Avatar uploaded!')),
-          );
-        }
-      } catch (e) {
-        // Keep _pickedImage for local preview; clear _avatarUrl so we don't use stale remote
-        setState(() {
-          _avatarUrl = null;
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Upload failed. Make sure "avatars" bucket exists in Supabase Storage (public) and policies from supabase/storage_policies.sql are applied. Error: $e')),
-          );
-        }
-      } finally {
-        setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Avatar uploaded!')),
+        );
       }
+    } catch (e) {
+      // Keep local preview; profile can still be saved without remote avatar in beta.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Photo preview saved locally, but upload failed. '
+              'Run supabase/beta_setup.sql (avatars bucket). Error: $e',
+            ),
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
-    // PR2 requirement: Avatar is required to unlock full access
-    if (_avatarUrl == null && !_avatarSelected) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('A profile photo is required to activate your account.')),
-      );
-      return;
-    }
-
     setState(() => _isLoading = true);
 
     try {
-      String? finalAvatarUrl = (_avatarUrl != null && !_avatarUrl!.startsWith('local://')) 
-          ? _avatarUrl 
-          : _profile.avatarUrl;
+      String? finalAvatarUrl =
+          (_avatarUrl != null && !_avatarUrl!.startsWith('local://'))
+              ? _avatarUrl
+              : _profile.avatarUrl;
 
-      // If we have a picked image but no successful remote URL yet, try upload now (e.g. after creating bucket)
-      if (_pickedImage != null && (finalAvatarUrl == null || finalAvatarUrl.startsWith('local://'))) {
-        final userId = SupabaseService.currentUser!.id;
-        final url = await ProfilesService.uploadAvatar(_pickedImage!, userId);
-        finalAvatarUrl = url;
-        _avatarUrl = url;
-        _pickedImage = null;
+      if (_pickedImage != null &&
+          (finalAvatarUrl == null || finalAvatarUrl.startsWith('local://'))) {
+        try {
+          final userId = SupabaseService.currentUser!.id;
+          final url = await ProfilesService.uploadAvatar(_pickedImage!, userId);
+          finalAvatarUrl = url;
+          _avatarUrl = url;
+          _pickedImage = null;
+          _pickedImageBytes = null;
+        } catch (_) {
+          // Allow save without photo for beta when storage is not set up.
+        }
       }
 
       final updatedProfile = UserProfile(
@@ -173,29 +182,40 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ageRange: _ageRange,
         bio: _bioController.text.trim(),
         interests: _selectedInterests,
-        city: _cityController.text.trim().isEmpty ? null : _cityController.text.trim(),
-        ward: _wardController.text.trim().isEmpty ? null : _wardController.text.trim(),
-        stake: _stakeController.text.trim().isEmpty ? null : _stakeController.text.trim(),
+        city: _cityController.text.trim().isEmpty
+            ? null
+            : _cityController.text.trim(),
+        ward: _wardController.text.trim().isEmpty
+            ? null
+            : _wardController.text.trim(),
+        stake: _stakeController.text.trim().isEmpty
+            ? null
+            : _stakeController.text.trim(),
         isVerifiedMember: _profile.isVerifiedMember,
         avatarUrl: finalAvatarUrl,
         createdAt: _profile.createdAt,
       );
 
-      // Real upsert to Supabase
       final saved = await ProfilesService.saveProfile(updatedProfile);
 
       setState(() {
         _profile = saved;
         _isEditing = false;
         _pickedImage = null;
+        _pickedImageBytes = null;
       });
 
-      // Refresh the shared Riverpod provider so other screens see the update
       await ref.read(currentProfileProvider.notifier).refresh();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile saved to Supabase!')),
+          SnackBar(
+            content: Text(
+              finalAvatarUrl == null
+                  ? 'Profile saved. (Add a photo when the avatars bucket is ready.)'
+                  : 'Profile saved!',
+            ),
+          ),
         );
       }
     } catch (e) {
@@ -205,12 +225,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  ImageProvider? get _avatarProvider {
+    if (_pickedImageBytes != null) {
+      return MemoryImage(_pickedImageBytes!);
+    }
+    if (_avatarUrl != null && !_avatarUrl!.startsWith('local://')) {
+      return NetworkImage(_avatarUrl!);
+    }
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Profile'),
@@ -229,18 +261,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  // Avatar (required gate)
+                  if (!_isEditing) ...[
+                    Material(
+                      color: theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(8),
+                      child: const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: Text(
+                          'Beta tip: Edit your profile (name, city, interests). '
+                          'Photo is recommended but not required while we finish storage setup.',
+                          style: TextStyle(fontSize: 13, height: 1.35),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                   Center(
                     child: Stack(
                       children: [
                         CircleAvatar(
                           radius: 60,
-                          backgroundImage: _pickedImage != null
-                              ? FileImage(File(_pickedImage!.path)) as ImageProvider<Object>?
-                              : (_avatarUrl != null && !_avatarUrl!.startsWith('local://')
-                                  ? NetworkImage(_avatarUrl!)
-                                  : null),
-                          child: (_pickedImage == null && _avatarUrl == null)
+                          backgroundImage: _avatarProvider,
+                          child: _avatarProvider == null
                               ? const Icon(Icons.person, size: 60)
                               : null,
                         ),
@@ -249,7 +291,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             bottom: 0,
                             right: 0,
                             child: FloatingActionButton.small(
-                              onPressed: _pickAvatar,
+                              onPressed: _isLoading ? null : _pickAvatar,
                               child: const Icon(Icons.camera_alt),
                             ),
                           ),
@@ -257,62 +299,111 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  if (_isEditing && (_pickedImage == null && _avatarUrl == null && !_avatarSelected))
+                  if (_isEditing)
                     Center(
                       child: Text(
-                        'Profile photo is required to activate your account.',
-                        style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
+                        'Photo optional for beta — recommended for trust.',
+                        style: TextStyle(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
                         textAlign: TextAlign.center,
                       ),
                     ),
                   const SizedBox(height: 24),
 
-                  // Basic fields
                   TextFormField(
                     controller: _nameController,
                     enabled: _isEditing,
                     decoration: const InputDecoration(labelText: 'Display Name'),
-                    validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? 'Required' : null,
                   ),
                   const SizedBox(height: 16),
 
                   DropdownButtonFormField<String>(
                     initialValue: _ageRange,
-                    decoration: const InputDecoration(labelText: 'Age Range (optional)'),
-                    items: ['18-25', '26-35', '36-45', '46+'].map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
-                    onChanged: _isEditing ? (v) => setState(() => _ageRange = v) : null,
+                    decoration: const InputDecoration(labelText: 'Age range'),
+                    items: const [
+                      DropdownMenuItem(value: '18-25', child: Text('18–25')),
+                      DropdownMenuItem(value: '26-35', child: Text('26–35')),
+                      DropdownMenuItem(value: '36-45', child: Text('36–45')),
+                      DropdownMenuItem(value: '46-55', child: Text('46–55')),
+                      DropdownMenuItem(value: '56+', child: Text('56+')),
+                    ],
+                    onChanged: _isEditing
+                        ? (v) => setState(() => _ageRange = v)
+                        : null,
                   ),
                   const SizedBox(height: 16),
 
                   TextFormField(
                     controller: _bioController,
                     enabled: _isEditing,
-                    decoration: const InputDecoration(labelText: 'Short Bio'),
                     maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Short bio',
+                      hintText: 'What kinds of gatherings do you enjoy?',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  TextFormField(
+                    controller: _cityController,
+                    enabled: _isEditing,
+                    decoration: const InputDecoration(
+                      labelText: 'City (coarse location)',
+                      helperText: 'We only store city — not your precise home address.',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  TextFormField(
+                    controller: _wardController,
+                    enabled: _isEditing,
+                    decoration: const InputDecoration(
+                      labelText: 'Ward (optional, private)',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  TextFormField(
+                    controller: _stakeController,
+                    enabled: _isEditing,
+                    decoration: const InputDecoration(
+                      labelText: 'Stake (optional, private)',
+                    ),
                   ),
                   const SizedBox(height: 24),
 
-                  // Interests - 4 areas
-                  const Text('Interests (select all that apply)', style: TextStyle(fontWeight: FontWeight.bold)),
-                  Text('Helps match you with activities across Spiritual, Social, Physical, Intellectual areas.', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  Text(
+                    'Interests (4 areas)',
+                    style: theme.textTheme.titleMedium,
+                  ),
                   const SizedBox(height: 8),
-
                   ...InterestsService.grouped.entries.map((entry) {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(entry.key, style: TextStyle(fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.primary)),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8, bottom: 4),
+                          child: Text(
+                            entry.key,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
                         Wrap(
-                          spacing: 8,
+                          spacing: 6,
+                          runSpacing: 4,
                           children: entry.value.map((interest) {
                             final selected = _selectedInterests.contains(interest);
                             return FilterChip(
                               label: Text(interest),
                               selected: selected,
                               onSelected: _isEditing
-                                  ? (sel) {
+                                  ? (v) {
                                       setState(() {
-                                        if (sel) {
+                                        if (v) {
                                           _selectedInterests.add(interest);
                                         } else {
                                           _selectedInterests.remove(interest);
@@ -323,89 +414,36 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             );
                           }).toList(),
                         ),
-                        const SizedBox(height: 12),
                       ],
                     );
                   }),
 
-                  const SizedBox(height: 16),
-
-                  // Location / Ward (coarse + optional)
-                  TextFormField(
-                    controller: _cityController,
-                    enabled: _isEditing,
-                    decoration: const InputDecoration(labelText: 'City (coarse location only)'),
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: _wardController,
-                    enabled: _isEditing,
-                    decoration: const InputDecoration(labelText: 'Ward (optional, self-reported)'),
-                  ),
-                  TextFormField(
-                    controller: _stakeController,
-                    enabled: _isEditing,
-                    decoration: const InputDecoration(labelText: 'Stake (optional)'),
-                  ),
-
                   const SizedBox(height: 24),
-
-                  // Verification status
-                  Card(
-                    color: _profile.isVerifiedMember
-                        ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3)
-                        : Theme.of(context).colorScheme.tertiaryContainer.withValues(alpha: 0.3),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Row(
-                        children: [
-                          Icon(_profile.isVerifiedMember ? Icons.verified : Icons.pending),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _profile.isVerifiedMember
-                                  ? 'Verified Member'
-                                  : 'Pending Review (your account is in the review queue)',
-                            ),
-                          ),
-                        ],
-                      ),
+                  if (_isEditing)
+                    FilledButton(
+                      onPressed: _isLoading ? null : _saveProfile,
+                      child: _isLoading
+                          ? const SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Save profile'),
+                    )
+                  else
+                    OutlinedButton(
+                      onPressed: () => setState(() => _isEditing = true),
+                      child: const Text('Edit profile'),
                     ),
-                  ),
 
                   const SizedBox(height: 16),
                   Text(
-                    'Privacy note: Only coarse city is stored. No precise location. Ward/stake is optional and not verified.',
-                    style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                  ),
-
-                  const SizedBox(height: 32),
-
-                  if (_isEditing)
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => setState(() => _isEditing = false),
-                            child: const Text('Cancel'),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: _isLoading ? null : _saveProfile,
-                            child: _isLoading
-                                ? const CircularProgressIndicator()
-                                : const Text('Save Profile'),
-                          ),
-                        ),
-                      ],
-                    )
-                  else
-                    FilledButton(
-                      onPressed: () => setState(() => _isEditing = true),
-                      child: const Text('Edit Profile'),
+                    'Verification: ${_profile.isVerifiedMember ? 'Verified member' : 'Pending review'}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
+                  ),
                 ],
               ),
             ),

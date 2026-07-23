@@ -11,6 +11,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:the_gathering/models/event.dart';
 import 'package:the_gathering/services/events_service.dart';
 import 'package:the_gathering/services/interests_service.dart';
+import 'package:the_gathering/services/seed_service.dart';
 
 /// Discover / Home screen (PR4).
 /// Real location (geolocator) + PostGIS nearby_events RPC, search, filters, pagination.
@@ -37,7 +38,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   double _currentLon = -111.89;
   bool _locationLoaded = false;
   double _radiusMiles = 25.0;
-  String _dateFilter = 'this_week';
+  // Default wider timeframe so beta seed events are visible without hunting.
+  String _dateFilter = 'all_future';
+  bool _isSeeding = false;
   late final MapController _mapController = MapController();
 
   @override
@@ -427,13 +430,59 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: _isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : _filteredEvents.isEmpty
-                        ? Center(
-                            child: Text(
-                              _searchQuery.isNotEmpty || _selectedFilter != null
-                                  ? 'No events match your search or filter. Try selecting "All" or clearing search.'
-                                  : 'No events found within ${_radiusMiles.toStringAsFixed(0)} mi for ${_getFilterLabel().toLowerCase()}. Try increasing the radius, changing the timeframe, or be the first to host one!',
-                              textAlign: TextAlign.center,
-                            ),
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: [
+                              const SizedBox(height: 32),
+                              Icon(
+                                Icons.explore_outlined,
+                                size: 56,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              const SizedBox(height: 16),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 24),
+                                child: Text(
+                                  _searchQuery.isNotEmpty || _selectedFilter != null
+                                      ? 'No events match your search or filter. Try selecting "All" or clearing search.'
+                                      : 'No activities nearby yet for ${_getFilterLabel().toLowerCase()}.\n\n'
+                                          'Load sample gatherings to explore the map, or create the first real one.',
+                                  textAlign: TextAlign.center,
+                                  style: Theme.of(context).textTheme.bodyLarge,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              if (_searchQuery.isEmpty && _selectedFilter == null) ...[
+                                Center(
+                                  child: FilledButton.icon(
+                                    onPressed: _isSeeding ? null : _seedSamples,
+                                    icon: _isSeeding
+                                        ? const SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(strokeWidth: 2),
+                                          )
+                                        : const Icon(Icons.auto_awesome),
+                                    label: Text(
+                                      _isSeeding
+                                          ? 'Loading samples…'
+                                          : 'Load sample activities near me',
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Center(
+                                  child: Text(
+                                    'Creates ~10 wholesome demo events around your map pin (you are the host).',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           )
                         : NotificationListener<ScrollNotification>(
                             onNotification: (notification) {
@@ -565,6 +614,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _seedSamples() async {
+    setState(() => _isSeeding = true);
+    try {
+      final count = await SeedService.seedSampleEventsNear(
+        lat: _currentLat,
+        lon: _currentLon,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            count > 0
+                ? 'Added $count sample activities near you. Explore the map!'
+                : 'Could not add samples. Confirm you are signed in and beta SQL is applied.',
+          ),
+        ),
+      );
+      // Show a wide timeframe so seeds are visible.
+      setState(() => _dateFilter = 'all_future');
+      await _loadEvents(reset: true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Sample load failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isSeeding = false);
+    }
   }
 
   Future<void> _refresh() async {

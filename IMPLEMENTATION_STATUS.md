@@ -1,34 +1,35 @@
 # The Gathering - Implementation Status
 
-## Completed
-- **PR1**: Full bootstrap + auth (email/pass + phone OTP + attestation + attestation screen)
-- **PR2**: Profiles + 4-area interests taxonomy + avatar gate + MainShell tabs + Riverpod providers
-- **PR3**: Event creation wizard (templates, 4-area tags, tiers/privacy, recurring, standards filter). EventsService Supabase integrated.
-- **PR4**: Full discovery with geolocator + PostGIS `nearby_events` RPC + flutter_map (radius circle + tappable markers) + search/filters/pagination. RSVP + attendees wired.
-- Polish: analyze -- 0 issues, debug/ TODO cleanup, UX refinements (miles, current-loc capture, marker taps), providers stable.
+**Owner:** Grok (engineering). **Primary tester:** James.
 
-## Files Overview
-- pubspec.yaml (updated with image_picker)
-- lib/main.dart (MainShell + router)
-- lib/screens/ (auth, onboarding, home, profile, create_event)
-- lib/models/ (user_profile, event)
-- lib/services/ (supabase, auth, interests, events)
-- supabase/migrations/ (001 + 002)
-- PR1_COMPLETION.md, PR2_COMPLETION.md, README.md, IMPLEMENTATION_STATUS.md
+## Completed (code)
+- **PR1**: Bootstrap + auth (email/pass + phone OTP when enabled + attestation)
+- **PR2**: Profiles + 4-area interests + avatar upload (soft-required in beta)
+- **PR3**: Event creation wizard + EventsService
+- **PR4**: Discovery map, PostGIS nearby, filters, pagination, RSVP, My Activities
+- **Beta readiness (2026-07-22)**:
+  - Auth UX for email-confirm / phone-off worlds
+  - In-app **Load sample activities** seed
+  - `supabase/beta_setup.sql` (RLS, avatars bucket, geo helpers)
+  - Web-safe profile avatar preview
+  - Empty Discover states
+  - `BETA_TEST.md` tester script
 
-## App Name
-"The Gathering"
+## Live
+- Web: https://diviscorp.github.io/TheGathering/
+- Supabase project: `dhryaddmqbbgekezskpl`
 
-## Design Fidelity
-All code strictly follows the design document (the-gathering-design-doc.md) including:
-- 4 areas tagging
-- Privacy (coarse location)
-- Wholesome standards enforcement
-- Complementary positioning + disclaimer
-- Verification flow
+## Blockers for other people testing (ops)
+1. Run `supabase/beta_setup.sql` in SQL Editor
+2. Auth URL config + prefer Confirm Email OFF for beta
+3. Smoke test: signup → profile → seed → RSVP → create
 
-## To Continue
-Next logical steps: full event persistence, discovery map/filters (PR4), or run on device.
+## Next after beta smoke passes
+1. Sentry crash reporting  
+2. Report event/user + light moderation  
+3. PR5: ICS export + notifications foundation  
+4. Realtime RSVPs  
+5. TestFlight / Play internal track  
 
-Run with Flutter after installing SDK + setting up Supabase.
-PR3 partial: CreateEventScreen with templates, 4-area tags, location tiers, recurring, standards filter live.
+## Design fidelity
+Follows `the-gathering-design-doc.md` (4 areas, coarse location, standards, independent branding).

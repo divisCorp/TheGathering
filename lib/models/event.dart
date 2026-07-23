@@ -44,15 +44,29 @@ class GatheringEvent {
   });
 
   factory GatheringEvent.fromSupabase(Map<String, dynamic> json) {
-    // Parse location if present (PostGIS geography returns as string like "POINT(lon lat)")
-    double? lat;
-    double? lon;
-    final loc = json['location'] as String?;
-    if (loc != null && loc.startsWith('POINT(')) {
-      final coords = loc.substring(6, loc.length - 1).split(' ');
-      if (coords.length == 2) {
-        lon = double.tryParse(coords[0]);
-        lat = double.tryParse(coords[1]);
+    // Parse location from several PostGIS/PostgREST shapes.
+    double? lat = (json['lat'] as num?)?.toDouble();
+    double? lon = (json['lon'] as num?)?.toDouble();
+    final loc = json['location'];
+    if (lat == null || lon == null) {
+      if (loc is String) {
+        // "POINT(lon lat)" or "SRID=4326;POINT(lon lat)"
+        final pointIdx = loc.indexOf('POINT(');
+        if (pointIdx >= 0) {
+          final inner = loc.substring(pointIdx + 6, loc.indexOf(')', pointIdx));
+          final coords = inner.trim().split(RegExp(r'\s+'));
+          if (coords.length >= 2) {
+            lon = double.tryParse(coords[0]);
+            lat = double.tryParse(coords[1]);
+          }
+        }
+      } else if (loc is Map) {
+        // GeoJSON: { type: Point, coordinates: [lon, lat] }
+        final coords = loc['coordinates'];
+        if (coords is List && coords.length >= 2) {
+          lon = (coords[0] as num?)?.toDouble();
+          lat = (coords[1] as num?)?.toDouble();
+        }
       }
     }
 

@@ -210,7 +210,22 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 16),
+            Material(
+              color: Theme.of(context).colorScheme.secondaryContainer.withValues(alpha: 0.45),
+              borderRadius: BorderRadius.circular(8),
+              child: const Padding(
+                padding: EdgeInsets.all(12),
+                child: Text(
+                  'Closed beta: use a real email you can access. '
+                  'If the app says “check your email”, open the Supabase confirmation link, then Sign In. '
+                  'Phone SMS may be off — email sign-in still works.',
+                  style: TextStyle(fontSize: 13, height: 1.35),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
 
             SegmentedButton<bool>(
               segments: const [
