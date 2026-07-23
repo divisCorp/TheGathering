@@ -68,11 +68,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
     authNotifier.clearError();
 
-    if (email.isEmpty || password.isEmpty || phoneRaw.isEmpty) {
-      authNotifier.setError(
-        'Please enter email, password, and phone number.',
-      );
-      _notify('Please enter email, password, and phone number.', isError: true);
+    if (email.isEmpty || password.isEmpty) {
+      authNotifier.setError('Please enter email and password.');
+      _notify('Please enter email and password.', isError: true);
       return;
     }
     if (password.length < 6) {
@@ -217,9 +215,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               child: const Padding(
                 padding: EdgeInsets.all(12),
                 child: Text(
-                  'Closed beta: use a real email you can access. '
-                  'If the app says “check your email”, open the Supabase confirmation link, then Sign In. '
-                  'Phone SMS may be off — email sign-in still works.',
+                  'Closed beta: each person needs their own email + password.\n'
+                  'On a shared computer, use Sign out (Profile tab) or a private/incognito window '
+                  'so you do not stay logged in as someone else.\n'
+                  'Phone is optional for now (SMS not required).',
                   style: TextStyle(fontSize: 13, height: 1.35),
                   textAlign: TextAlign.center,
                 ),
@@ -291,10 +290,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 TextField(
                   controller: _phoneController,
                   decoration: const InputDecoration(
-                    labelText: 'Phone Number',
+                    labelText: 'Phone (optional for beta)',
                     hintText: '+1 555 123 4567',
                     border: OutlineInputBorder(),
-                    helperText: 'Include country code (e.g. +1 for US)',
+                    helperText: 'Optional — SMS verification is not required right now',
                   ),
                   keyboardType: TextInputType.phone,
                   enabled: !isLoading,

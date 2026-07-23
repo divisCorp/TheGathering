@@ -73,7 +73,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<SignUpResult> signUp({
     required String email,
     required String password,
-    required String phone,
+    String phone = '',
     required bool affirmedAttestation,
   }) async {
     state = state.copyWith(
@@ -161,8 +161,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> signOut() async {
-    await _authService.signOut();
-    state = const AuthState();
+    state = state.copyWith(isLoading: true, clearError: true, clearInfo: true);
+    try {
+      await _authService.signOut();
+    } finally {
+      // Always clear local state even if network sign-out is flaky.
+      state = const AuthState();
+    }
   }
 
   void clearError() {
@@ -180,7 +185,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
   static String _friendly(Object e) {
     var raw = e.toString();
     raw = raw.replaceFirst(RegExp(r'^(Exception|AuthException):\s*'), '');
-    return raw.trim().isEmpty ? 'Something went wrong. Please try again.' : raw.trim();
+    raw = raw.trim();
+    final lower = raw.toLowerCase();
+    if (lower.contains('already registered') ||
+        lower.contains('user already exists')) {
+      return 'That email already has an account. Use Sign In instead.';
+    }
+    if (lower.contains('invalid login') || lower.contains('invalid credentials')) {
+      return 'Incorrect email or password.';
+    }
+    return raw.isEmpty ? 'Something went wrong. Please try again.' : raw;
   }
 }
 

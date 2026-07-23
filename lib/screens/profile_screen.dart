@@ -2,8 +2,10 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:the_gathering/models/user_profile.dart';
+import 'package:the_gathering/providers/auth_provider.dart';
 import 'package:the_gathering/providers/current_profile_provider.dart';
 import 'package:the_gathering/services/interests_service.dart';
 import 'package:the_gathering/services/profiles_service.dart';
@@ -151,6 +153,44 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
+  Future<void> _signOut() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Sign out?'),
+        content: const Text(
+          'You will return to the sign-in screen. '
+          'Use this before a friend creates their own account on this device.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Sign out'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+
+    setState(() => _isLoading = true);
+    try {
+      await ref.read(authProvider.notifier).signOut();
+      if (!mounted) return;
+      context.go('/auth');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Sign out failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -250,8 +290,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           if (!_isEditing)
             IconButton(
               icon: const Icon(Icons.edit),
+              tooltip: 'Edit profile',
               onPressed: () => setState(() => _isEditing = true),
             ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'Sign out',
+            onPressed: _isLoading ? null : _signOut,
+          ),
         ],
       ),
       body: _isLoadingProfile
@@ -265,12 +311,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     Material(
                       color: theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
                       borderRadius: BorderRadius.circular(8),
-                      child: const Padding(
-                        padding: EdgeInsets.all(12),
-                        child: Text(
-                          'Beta tip: Edit your profile (name, city, interests). '
-                          'Photo is recommended but not required while we finish storage setup.',
-                          style: TextStyle(fontSize: 13, height: 1.35),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Signed in as ${SupabaseService.currentUser?.email ?? _profile.displayName}',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                height: 1.35,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              'Friends must create their own account. '
+                              'Tap Sign out (top right) or the button below before they use this browser.',
+                              style: TextStyle(fontSize: 13, height: 1.35),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -439,6 +499,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   const SizedBox(height: 16),
                   Text(
                     'Verification: ${_profile.isVerifiedMember ? 'Verified member' : 'Pending review'}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  OutlinedButton.icon(
+                    onPressed: _isLoading ? null : _signOut,
+                    icon: const Icon(Icons.logout),
+                    label: const Text('Sign out'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: theme.colorScheme.error,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'After sign out, Create Account works for the next person on this device.',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 12,
                       color: theme.colorScheme.onSurfaceVariant,

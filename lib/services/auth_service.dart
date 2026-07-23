@@ -45,7 +45,7 @@ class AuthService {
   Future<SignUpResult> signUp({
     required String email,
     required String password,
-    required String phone,
+    String phone = '',
     required bool affirmedAttestation,
   }) async {
     if (!affirmedAttestation) {
@@ -56,14 +56,16 @@ class AuthService {
     if (email.trim().isEmpty || password.isEmpty) {
       throw Exception('Email and password are required.');
     }
-    if (phone.trim().isEmpty) {
-      throw Exception('Phone number is required.');
-    }
 
-    final response = await SupabaseService.signUpWithEmail(
-      email: email.trim(),
-      password: password,
-    );
+    AuthResponse response;
+    try {
+      response = await SupabaseService.signUpWithEmail(
+        email: email.trim(),
+        password: password,
+      );
+    } on AuthException catch (e) {
+      throw Exception(_friendlyAuthMessage(e));
+    }
 
     if (response.user == null) {
       throw Exception('Sign up failed. Please try again.');
@@ -72,37 +74,42 @@ class AuthService {
     final hasSession = response.session != null;
     var phoneOtpSent = false;
     var phoneProviderUnavailable = false;
+    final phoneTrimmed = phone.trim();
 
-    // Prefer SMS verification when the project has Phone auth enabled.
-    try {
-      await SupabaseService.sendPhoneOtp(phone);
-      phoneOtpSent = true;
-    } on AuthException catch (e) {
-      phoneProviderUnavailable = _isPhoneProviderDisabled(e);
-      if (!phoneProviderUnavailable) {
-        // Real SMS / rate-limit / invalid-number errors should surface.
-        throw Exception(_friendlyAuthMessage(e));
+    // Optional phone — only attempt SMS when a number is provided.
+    if (phoneTrimmed.isNotEmpty) {
+      try {
+        await SupabaseService.sendPhoneOtp(phoneTrimmed);
+        phoneOtpSent = true;
+      } on AuthException catch (e) {
+        phoneProviderUnavailable = _isPhoneProviderDisabled(e);
+        if (!phoneProviderUnavailable) {
+          throw Exception(_friendlyAuthMessage(e));
+        }
+      } catch (e) {
+        final msg = e.toString();
+        if (_looksLikePhoneProviderDisabled(msg)) {
+          phoneProviderUnavailable = true;
+        } else {
+          rethrow;
+        }
       }
-    } catch (e) {
-      final msg = e.toString();
-      if (_looksLikePhoneProviderDisabled(msg)) {
-        phoneProviderUnavailable = true;
-      } else {
-        rethrow;
-      }
+    } else {
+      // Beta: SMS often disabled; email-only accounts are allowed.
+      phoneProviderUnavailable = true;
     }
 
     if (hasSession) {
-      if (!phoneProviderUnavailable) {
+      if (phoneTrimmed.isNotEmpty && !phoneProviderUnavailable) {
         try {
-          await SupabaseService.sendPhoneVerificationForCurrentUser(phone);
+          await SupabaseService.sendPhoneVerificationForCurrentUser(phoneTrimmed);
         } catch (_) {
           // Non-fatal: unauth OTP may already cover verification.
         }
       }
 
       await SupabaseService.updateUserMetadata({
-        'phone': phone,
+        if (phoneTrimmed.isNotEmpty) 'phone': phoneTrimmed,
         'attestation_affirmed': true,
         'attestation_text': _attestationText,
         'is_verified_member': false,
@@ -127,22 +134,16 @@ class AuthService {
         outcome: SignUpOutcome.sessionReady,
         response: response,
         phoneProviderUnavailable: phoneProviderUnavailable,
-        message: phoneProviderUnavailable
-            ? 'Account created. Phone SMS is not enabled on the server yet, so you can continue with email for now.'
-            : 'Account created. Continue to your profile.',
+        message: 'Account created. Welcome to The Gathering!',
       );
     }
 
-    // Email confirmation required (common when "Confirm email" is on).
     return SignUpResult(
       outcome: SignUpOutcome.emailConfirmationRequired,
       response: response,
       phoneProviderUnavailable: phoneProviderUnavailable,
-      message: phoneProviderUnavailable
-          ? 'Account created. Check your email to confirm, then Sign In. '
-              '(Phone SMS is currently disabled in Supabase Auth → Providers.)'
-          : 'Account created. Check your email to confirm your address, then Sign In '
-              'to finish phone verification.',
+      message:
+          'Account created. Check your email to confirm, then use Sign In.',
     );
   }
 
@@ -182,7 +183,8 @@ class AuthService {
   }
 
   Future<void> signOut() async {
-    await SupabaseService.client.auth.signOut();
+    // Clear local + server session so the next visitor does not inherit this login.
+    await SupabaseService.client.auth.signOut(scope: SignOutScope.global);
   }
 
   bool get isAuthenticated => SupabaseService.currentUser != null;
@@ -228,6 +230,15 @@ class AuthService {
 
   static String _friendlyAuthMessage(AuthException e) {
     final msg = e.message.trim();
+    final lower = msg.toLowerCase();
+    if (lower.contains('already registered') ||
+        lower.contains('already been registered') ||
+        lower.contains('user already exists')) {
+      return 'That email already has an account. Use Sign In, or Sign out first if you are on a shared device.';
+    }
+    if (lower.contains('password')) {
+      return msg;
+    }
     if (msg.isEmpty) return 'Authentication failed. Please try again.';
     return msg;
   }

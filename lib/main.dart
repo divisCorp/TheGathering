@@ -167,15 +167,15 @@ class TheGatheringApp extends ConsumerWidget {
 
 /// Simple main shell with bottom navigation.
 /// Tabs: Discover (Home), Create, My Activities (RSVPs + hosted), Profile
-class MainShell extends StatefulWidget {
+class MainShell extends ConsumerStatefulWidget {
   final int initialTab;
   const MainShell({super.key, this.initialTab = 0});
 
   @override
-  State<MainShell> createState() => _MainShellState();
+  ConsumerState<MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
+class _MainShellState extends ConsumerState<MainShell> {
   late int _currentIndex;
 
   final List<Widget> _pages = const [
@@ -191,10 +191,61 @@ class _MainShellState extends State<MainShell> {
     _currentIndex = widget.initialTab;
   }
 
+  Future<void> _quickSignOut() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Sign out?'),
+        content: const Text(
+          'Clear this login so someone else can create or use their own account.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Sign out')),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    await ref.read(authProvider.notifier).signOut();
+    if (!mounted) return;
+    context.go('/auth');
+  }
+
   @override
   Widget build(BuildContext context) {
+    final email = ref.watch(authProvider).user?.email;
+
     return Scaffold(
-      body: _pages[_currentIndex],
+      body: Column(
+        children: [
+          if (email != null && email.isNotEmpty)
+            Material(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Logged in: $email',
+                          style: const TextStyle(fontSize: 12),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _quickSignOut,
+                        child: const Text('Sign out'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          Expanded(child: _pages[_currentIndex]),
+        ],
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         type: BottomNavigationBarType.fixed,
@@ -203,7 +254,6 @@ class _MainShellState extends State<MainShell> {
         unselectedItemColor: Theme.of(context).colorScheme.onSurfaceVariant,
         onTap: (index) {
           setState(() => _currentIndex = index);
-          // Optional: router push if needed for deep linking
         },
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.explore), label: 'Discover'),
