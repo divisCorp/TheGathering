@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -564,6 +565,36 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     title: const Text('Privacy & standards'),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => context.push('/terms'),
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.badge_outlined),
+                    title: const Text('Copy support ID'),
+                    subtitle: Text(
+                      SupabaseService.currentUser?.id ?? 'Not signed in',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: const Icon(Icons.copy, size: 18),
+                    onTap: () async {
+                      final id = SupabaseService.currentUser?.id;
+                      if (id == null) return;
+                      await Clipboard.setData(ClipboardData(text: id));
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('User ID copied (for beta support).'),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Beta v0.1.9',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   const SizedBox(height: 20),
                   OutlinedButton.icon(

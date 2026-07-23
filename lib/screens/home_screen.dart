@@ -54,14 +54,53 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
-    _getCurrentLocation().then((_) => _loadEvents(reset: true));
+    _restoreDiscoverPrefs().then((_) {
+      _getCurrentLocation().then((_) => _loadEvents(reset: true));
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowWelcome());
+  }
+
+  Future<void> _restoreDiscoverPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final radius = prefs.getDouble('tg_radius_mi');
+      final timeframe = prefs.getString('tg_timeframe');
+      final free = prefs.getBool('tg_free_only');
+      final recurring = prefs.getBool('tg_recurring_only');
+      if (!mounted) return;
+      setState(() {
+        if (radius != null && radius >= 1 && radius <= 50) {
+          _radiusMiles = radius;
+        }
+        if (timeframe != null &&
+            [
+              'today',
+              'this_week',
+              'this_month',
+              'next_3_months',
+              'all_future',
+            ].contains(timeframe)) {
+          _dateFilter = timeframe;
+        }
+        if (free != null) _freeOnly = free;
+        if (recurring != null) _recurringOnly = recurring;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _saveDiscoverPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble('tg_radius_mi', _radiusMiles);
+      await prefs.setString('tg_timeframe', _dateFilter);
+      await prefs.setBool('tg_free_only', _freeOnly);
+      await prefs.setBool('tg_recurring_only', _recurringOnly);
+    } catch (_) {}
   }
 
   Future<void> _maybeShowWelcome() async {
     // Lightweight first-run tip; ignore failures (prefs optional).
     try {
-      // ignore: depend_on_referenced_packages
       final prefs = await SharedPreferences.getInstance();
       if (prefs.getBool('tg_welcome_v1') == true) return;
       if (!mounted) return;
@@ -387,10 +426,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
             const SizedBox(height: 12),
 
-            // Radius slider (PR4)
+            // Radius presets + slider
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  const Text('Radius: '),
+                  ...[5.0, 15.0, 25.0, 50.0].map((mi) {
+                    final selected = (_radiusMiles - mi).abs() < 0.5;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ChoiceChip(
+                        label: Text('${mi.toInt()} mi'),
+                        selected: selected,
+                        onSelected: (_) {
+                          setState(() => _radiusMiles = mi);
+                          _saveDiscoverPrefs();
+                          _loadEvents(reset: true);
+                        },
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
             Row(
               children: [
-                const Text('Radius: '),
                 Expanded(
                   child: Slider(
                     value: _radiusMiles,
@@ -402,6 +463,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       setState(() => _radiusMiles = v);
                     },
                     onChangeEnd: (v) {
+                      _saveDiscoverPrefs();
                       _loadEvents(reset: true);
                     },
                   ),
@@ -429,6 +491,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               onChanged: (v) {
                 if (v != null && v != _dateFilter) {
                   setState(() => _dateFilter = v);
+                  _saveDiscoverPrefs();
                   _loadEvents(reset: true);
                 }
               },
@@ -449,13 +512,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   FilterChip(
                     label: const Text('Free only'),
                     selected: _freeOnly,
-                    onSelected: (v) => setState(() => _freeOnly = v),
+                    onSelected: (v) {
+                      setState(() => _freeOnly = v);
+                      _saveDiscoverPrefs();
+                    },
                   ),
                   const SizedBox(width: 6),
                   FilterChip(
                     label: const Text('Recurring'),
                     selected: _recurringOnly,
-                    onSelected: (v) => setState(() => _recurringOnly = v),
+                    onSelected: (v) {
+                      setState(() => _recurringOnly = v);
+                      _saveDiscoverPrefs();
+                    },
                   ),
                   const SizedBox(width: 6),
                   ...InterestsService.grouped.keys.take(4).map((area) => Padding(
@@ -487,6 +556,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       _freeOnly = false;
                       _recurringOnly = false;
                     });
+                    _saveDiscoverPrefs();
                     _loadEvents(reset: true);
                   },
                   icon: const Icon(Icons.clear, size: 16),
@@ -719,7 +789,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                                 ),
                                                 const SizedBox(height: 4),
                                                 Text(
-                                                  '${event.tags.join(' • ')}  •  ${_formatTime(event.startTime)}',
+                                                  '${event.tags.join(' • ')}  •  ${_formatTime(event.startTime)}'
+                                                  '  ·  ${_relativeWhen(event.startTime)}',
                                                   style: TextStyle(
                                                     fontSize: 12,
                                                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -844,6 +915,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final date = DateFormat.MMMd().format(dt); // e.g. Jul 7
     final time = DateFormat.jm().format(dt);    // e.g. 3:30 PM
     return '$date · $time';
+  }
+
+  String _relativeWhen(DateTime start) {
+    final now = DateTime.now();
+    final local = start.toLocal();
+    final diff = local.difference(now);
+    if (diff.isNegative) return 'Started';
+    if (diff.inDays >= 14) return 'In ${diff.inDays}d';
+    if (diff.inDays >= 2) return 'In ${diff.inDays}d';
+    if (diff.inDays == 1) return 'Tomorrow';
+    if (diff.inHours >= 1) return 'In ${diff.inHours}h';
+    if (diff.inMinutes >= 1) return 'In ${diff.inMinutes}m';
+    return 'Soon';
   }
 }
 
