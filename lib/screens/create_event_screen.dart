@@ -572,15 +572,42 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
               ),
 
             const SizedBox(height: 12),
+            const Text('Capacity', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              children: [
+                ChoiceChip(
+                  label: const Text('No limit'),
+                  selected: _maxAttendees == null,
+                  onSelected: (_) => setState(() => _maxAttendees = null),
+                ),
+                ...[5, 10, 15, 20, 30].map(
+                  (n) => ChoiceChip(
+                    label: Text('$n'),
+                    selected: _maxAttendees == n,
+                    onSelected: (_) => setState(() => _maxAttendees = n),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
             TextFormField(
-              decoration: const InputDecoration(labelText: 'Max Attendees (optional)', border: OutlineInputBorder()),
+              decoration: InputDecoration(
+                labelText: 'Custom max attendees',
+                border: const OutlineInputBorder(),
+                hintText: _maxAttendees?.toString() ?? 'Optional',
+              ),
               keyboardType: TextInputType.number,
-              onChanged: (v) => _maxAttendees = int.tryParse(v),
+              onChanged: (v) {
+                final parsed = int.tryParse(v.trim());
+                setState(() => _maxAttendees = parsed);
+              },
             ),
 
             const SizedBox(height: 24),
 
-            ElevatedButton(
+            FilledButton(
               onPressed: _isPublishing ? null : _submit,
               child: _isPublishing
                   ? const Row(
@@ -589,7 +616,7 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
                         SizedBox(
                           width: 16,
                           height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         ),
                         SizedBox(width: 8),
                         Text('Saving...'),
@@ -600,8 +627,13 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
 
             const SizedBox(height: 16),
             Text(
-              'Location lat/lon captured. Full geocoding + map picker in later iteration.',
-              style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
+              _eventLat != null
+                  ? 'Map pin set — this activity can appear in nearby Discover.'
+                  : 'Tip: use current location so others find you on the map.',
+              style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
             ],
           ],

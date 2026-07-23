@@ -220,6 +220,33 @@ class EventsService {
     return response.map<GatheringEvent>((json) => _fromJson(json)).toList();
   }
 
+  /// Host-cancelled activities (for history / restore later).
+  static Future<List<GatheringEvent>> fetchMyCancelledEvents({
+    int limit = 15,
+  }) async {
+    final user = SupabaseService.currentUser;
+    if (user == null) return [];
+    final response = await _client
+        .from('events')
+        .select()
+        .eq('host_id', user.id)
+        .eq('status', 'cancelled')
+        .order('start_time', ascending: false)
+        .limit(limit);
+    return response.map<GatheringEvent>((json) => _fromJson(json)).toList();
+  }
+
+  /// Reactivate a cancelled event (host only).
+  static Future<void> restoreEvent(String eventId) async {
+    final user = SupabaseService.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+    await _client
+        .from('events')
+        .update({'status': 'active'})
+        .eq('id', eventId)
+        .eq('host_id', user.id);
+  }
+
   // ==================== Basic RSVPs ====================
 
   /// Fetch RSVPs for the current user (for My Activities).
@@ -250,7 +277,8 @@ class EventsService {
           .select('max_attendees')
           .eq('id', eventId)
           .maybeSingle();
-      final max = eventRow?['max_attendees'] as int?;
+      final maxRaw = eventRow?['max_attendees'];
+      final max = maxRaw is int ? maxRaw : (maxRaw as num?)?.toInt();
       if (max != null && max > 0) {
         final existing = await _client
             .from('rsvps')

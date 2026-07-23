@@ -21,6 +21,7 @@ class _MyActivitiesScreenState extends ConsumerState<MyActivitiesScreen> {
   List<Map<String, dynamic>> _myRsvps = [];
   List<GatheringEvent> _myHostedEvents = [];
   List<GatheringEvent> _myPastHosted = [];
+  List<GatheringEvent> _myCancelled = [];
   Map<String, ({int going, int maybe})> _rsvpCounts = {};
 
   @override
@@ -35,6 +36,7 @@ class _MyActivitiesScreenState extends ConsumerState<MyActivitiesScreen> {
       final rsvps = await EventsService.fetchMyRsvps();
       final hosted = await EventsService.fetchMyEvents(upcomingOnly: true);
       final past = await EventsService.fetchMyPastHostedEvents();
+      final cancelled = await EventsService.fetchMyCancelledEvents();
       final counts = await EventsService.fetchRsvpCounts(
         hosted.map((e) => e.id).toList(),
       );
@@ -52,6 +54,7 @@ class _MyActivitiesScreenState extends ConsumerState<MyActivitiesScreen> {
           _myRsvps = activeRsvps;
           _myHostedEvents = hosted;
           _myPastHosted = past;
+          _myCancelled = cancelled;
           _rsvpCounts = counts;
           _isLoading = false;
         });
@@ -63,6 +66,22 @@ class _MyActivitiesScreenState extends ConsumerState<MyActivitiesScreen> {
           SnackBar(content: Text('Failed to load activities: $e')),
         );
       }
+    }
+  }
+
+  Future<void> _restore(GatheringEvent e) async {
+    try {
+      await EventsService.restoreEvent(e.id);
+      await _loadData();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Restored "${e.title}" to Discover')),
+      );
+    } catch (err) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Restore failed: $err')),
+      );
     }
   }
 
@@ -308,6 +327,36 @@ class _MyActivitiesScreenState extends ConsumerState<MyActivitiesScreen> {
                       ],
                     ),
                     onTap: () => context.push('/event', extra: e),
+                  ),
+                );
+              }),
+            ],
+
+            if (_myCancelled.isNotEmpty) ...[
+              const SizedBox(height: 28),
+              Text(
+                'Cancelled',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ..._myCancelled.map((e) {
+                final timeStr =
+                    DateFormat('MMM d · h:mm a').format(e.startTime);
+                return Card(
+                  margin: const EdgeInsets.symmetric(vertical: 4),
+                  child: ListTile(
+                    leading: Icon(
+                      Icons.event_busy,
+                      color: theme.colorScheme.error,
+                    ),
+                    title: Text(e.title),
+                    subtitle: Text(timeStr),
+                    trailing: TextButton(
+                      onPressed: () => _restore(e),
+                      child: const Text('Restore'),
+                    ),
                   ),
                 );
               }),
