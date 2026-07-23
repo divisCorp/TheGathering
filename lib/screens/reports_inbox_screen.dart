@@ -151,7 +151,38 @@ class _ReportsInboxScreenState extends State<ReportsInboxScreen> {
                         ),
                       )
                     : _reports.isEmpty
-                        ? const Center(child: Text('No reports in this filter.'))
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.flag_outlined,
+                                    size: 48,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    _filter == 'pending'
+                                        ? 'No pending reports right now.'
+                                        : 'No reports in this filter.',
+                                    textAlign: TextAlign.center,
+                                    style: theme.textTheme.titleMedium,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'To generate one: open any activity → ⋮ menu → Report activity. '
+                                    'Then pull to refresh here.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
                         : RefreshIndicator(
                             onRefresh: _load,
                             child: ListView.separated(

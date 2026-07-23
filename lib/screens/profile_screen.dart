@@ -287,6 +287,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       appBar: AppBar(
         title: const Text('My Profile'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.flag_outlined),
+            tooltip: 'Reports inbox',
+            onPressed: () => context.push('/reports'),
+          ),
           if (!_isEditing)
             IconButton(
               icon: const Icon(Icons.edit),
@@ -332,6 +337,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             ),
                           ],
                         ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Near top so it is not buried under interests.
+                    Card(
+                      child: ListTile(
+                        leading: Icon(
+                          Icons.flag,
+                          color: theme.colorScheme.primary,
+                        ),
+                        title: const Text(
+                          'Reports inbox',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: const Text(
+                          'Review community reports (beta moderation)',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => context.push('/reports'),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -505,16 +529,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.flag_outlined),
-                    title: const Text('Reports inbox'),
-                    subtitle: const Text('Beta: review community reports'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => context.push('/reports'),
-                  ),
-                  const Divider(),
-                  const SizedBox(height: 8),
                   OutlinedButton.icon(
                     onPressed: _isLoading ? null : _signOut,
                     icon: const Icon(Icons.logout),

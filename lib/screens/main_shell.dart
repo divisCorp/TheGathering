@@ -83,6 +83,10 @@ class _MainShellState extends ConsumerState<MainShell> {
                         ),
                       ),
                       TextButton(
+                        onPressed: () => context.push('/reports'),
+                        child: const Text('Reports'),
+                      ),
+                      TextButton(
                         onPressed: _quickSignOut,
                         child: const Text('Sign out'),
                       ),

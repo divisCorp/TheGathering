@@ -285,10 +285,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       appBar: AppBar(
         title: const Text('The Gathering'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.flag_outlined),
-            tooltip: 'Reports inbox',
+          TextButton.icon(
             onPressed: () => context.push('/reports'),
+            icon: const Icon(Icons.flag_outlined, size: 18),
+            label: const Text('Reports'),
           ),
           IconButton(
             icon: const Icon(Icons.my_location),
