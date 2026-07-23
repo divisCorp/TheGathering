@@ -150,6 +150,7 @@ class EventsService {
         .from('events')
         .select()
         .eq('host_id', user.id)
+        .eq('status', 'active')
         .order('start_time', ascending: true);
     return response.map<GatheringEvent>((json) => _fromJson(json)).toList();
   }
@@ -209,14 +210,14 @@ class EventsService {
     return List<Map<String, dynamic>>.from(response);
   }
 
-  /// Delete an event (only allowed for the host).
+  /// Cancel an event (host only). Soft-cancel so history/reports remain.
   static Future<void> deleteEvent(String eventId) async {
     final user = SupabaseService.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     await _client
         .from('events')
-        .delete()
+        .update({'status': 'cancelled'})
         .eq('id', eventId)
         .eq('host_id', user.id);
   }

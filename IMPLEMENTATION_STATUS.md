@@ -24,10 +24,17 @@
 2. Auth URL config + prefer Confirm Email OFF for beta
 3. Smoke test: signup → profile → seed → RSVP → create
 
-## Next after beta smoke passes
+## Shipped recently
+- Report activity (reason + details → `reports` table)
+- Add to calendar (Google Calendar + copy ICS)
+- Soft-cancel hosted events (`status = cancelled`)
+- Event detail polish (standards banner, host menu)
+- `supabase/shipping_rls_beta.sql` (auth can view active events + reports policies)
+
+## Next
 1. Sentry crash reporting  
-2. Report event/user + light moderation  
-3. PR5: ICS export + notifications foundation  
+2. Simple moderation view / email of new reports  
+3. Push notifications foundation  
 4. Realtime RSVPs  
 5. TestFlight / Play internal track  
 

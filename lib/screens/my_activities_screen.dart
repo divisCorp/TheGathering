@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:the_gathering/models/event.dart';
 import 'package:the_gathering/screens/create_event_screen.dart';
@@ -188,9 +189,9 @@ class _MyActivitiesScreenState extends State<MyActivitiesScreen> {
                     child: ListTile(
                       leading: const Icon(Icons.event),
                       title: Text(e.title),
-                      subtitle: Text(timeStr),
+                      subtitle: Text('$timeStr · swipe to edit or cancel'),
                       trailing: const Chip(label: Text('Hosting')),
-                      onTap: () => _editHostedEvent(e),
+                      onTap: () => context.push('/event', extra: e),
                     ),
                   ),
                 );
@@ -199,27 +200,40 @@ class _MyActivitiesScreenState extends State<MyActivitiesScreen> {
             ] else ...[
               const Text('Hosting', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              const Text('You are not hosting any events yet.', style: TextStyle(color: Colors.grey)),
+              Text(
+                'You are not hosting any events yet. Use Create or load samples on Discover.',
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
               const SizedBox(height: 24),
             ],
             const Text('My RSVPs', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             if (_myRsvps.isEmpty)
-              const Text('No RSVPs yet. Browse Discover and respond!', style: TextStyle(color: Colors.grey))
+              Text(
+                'No RSVPs yet. Browse Discover and respond!',
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              )
             else
               ..._myRsvps.map((r) {
-                final event = r['events'] ?? {};
-                final status = r['status'] ?? 'going';
-                final title = event['title'] ?? 'Unknown event';
+                final eventMap = (r['events'] as Map<String, dynamic>?) ?? {};
+                final status = r['status'] as String? ?? 'going';
+                final title = eventMap['title'] as String? ?? 'Unknown event';
                 String timeStr = '';
-                final startStr = event['start_time'];
+                final startStr = eventMap['start_time'];
                 if (startStr is String) {
                   try {
                     timeStr = DateFormat('MMM d, h:mm a').format(DateTime.parse(startStr));
                   } catch (_) {}
                 }
+                GatheringEvent? parsed;
+                try {
+                  if (eventMap['id'] != null) {
+                    parsed = GatheringEvent.fromSupabase(eventMap);
+                  }
+                } catch (_) {}
+
                 return Dismissible(
-                  key: ValueKey('rsvp_${event['id'] ?? title}'),
+                  key: ValueKey('rsvp_${eventMap['id'] ?? title}'),
                   direction: DismissDirection.endToStart,
                   dismissThresholds: const {DismissDirection.endToStart: 0.25},
                   background: Container(
@@ -233,7 +247,7 @@ class _MyActivitiesScreenState extends State<MyActivitiesScreen> {
                       context: context,
                       builder: (ctx) => AlertDialog(
                         title: const Text('Remove RSVP?'),
-                        content: Text('Stop attending "${title}"?'),
+                        content: Text('Stop attending "$title"?'),
                         actions: [
                           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
                           TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove')),
@@ -243,7 +257,7 @@ class _MyActivitiesScreenState extends State<MyActivitiesScreen> {
                   },
                   onDismissed: (direction) async {
                     try {
-                      await EventsService.cancelRsvp(event['id']);
+                      await EventsService.cancelRsvp(eventMap['id'] as String);
                       await _loadData();
                     } catch (err) {
                       if (mounted) {
@@ -258,9 +272,12 @@ class _MyActivitiesScreenState extends State<MyActivitiesScreen> {
                     child: ListTile(
                       leading: const Icon(Icons.event_available),
                       title: Text(title),
-                      subtitle: Text(timeStr.isNotEmpty ? '$timeStr  •  Status: $status' : 'Status: $status'),
+                      subtitle: Text(
+                        timeStr.isNotEmpty ? '$timeStr · $status' : 'Status: $status',
+                      ),
                       trailing: PopupMenuButton<String>(
-                        onSelected: (newStatus) => _updateRsvp(event['id'], newStatus),
+                        onSelected: (newStatus) =>
+                            _updateRsvp(eventMap['id'] as String, newStatus),
                         itemBuilder: (_) => const [
                           PopupMenuItem(value: 'going', child: Text('Going')),
                           PopupMenuItem(value: 'maybe', child: Text('Maybe')),
@@ -268,6 +285,9 @@ class _MyActivitiesScreenState extends State<MyActivitiesScreen> {
                         ],
                         child: Chip(label: Text(status)),
                       ),
+                      onTap: parsed == null
+                          ? null
+                          : () => context.push('/event', extra: parsed),
                     ),
                   ),
                 );

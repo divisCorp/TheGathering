@@ -67,9 +67,18 @@ Send feedback as: **steps → expected → actual → device/browser**.
 
 ---
 
+## Optional SQL if discovery empties after a schema change
+Run `supabase/shipping_rls_beta.sql` so signed-in users can always view active events + submit reports.
+
+## New things to poke
+- Event detail → **Add to calendar** (Google or copy ICS)  
+- Event ⋮ menu → **Report activity**  
+- Host: ⋮ → Edit / Cancel activity  
+- My Activities → tap hosted/RSVP rows for detail  
+
 ## Known beta limits
 - Web first (GitHub Pages); native stores later  
-- Push notifications / ICS calendar not done  
+- Push notifications not done  
 - Phone SMS often off until Twilio + Phone provider enabled  
 - Realtime RSVP live-updates off (pull to refresh)  
 - Not affiliated with The Church of Jesus Christ of Latter-day Saints  
